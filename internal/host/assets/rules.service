@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh SingForge pinned routing data
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/local/bin/singforge rules update

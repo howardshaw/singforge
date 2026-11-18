@@ -1,0 +1,28 @@
+# Upstream research and attribution
+
+The Go controller, renderers, units and bootstrap were written for SingForge. Reference scripts and client templates were inspected as behavioral references. No shell functions, scripts, bundled binaries, rule payloads or complete client templates from those projects are vendored in the repository.
+
+| Project and inspected revision | Implementation findings and SingForge decision |
+|---|---|
+| [fscarmen/sing-box at 2dd34b2](https://github.com/fscarmen/sing-box/tree/2dd34b2d5a9c14b85d4a0a737267d05353eb1948) | The shell orchestrator handles ports, Argo, dedicated Nginx, per-protocol fragments, client snippets, service firewall rules and an uninstall path. Some binary fetches use wget without certificate verification. SingForge uses verified downloads, separate renderers, private generations and independent service identities. GPL-3.0 repository. |
+| [howardshaw/newsuoha.sh at 983839b](https://github.com/howardshaw/newsuoha.sh/tree/983839b6b067f093c41cc7eb68662c8407406352) | The documented HTTP subscription path, static export files and verification bypass for self-issued TLS motivated revocable HTTPS publication and explicit trust handling. The shell also writes sysctl settings during provisioning. Tuning here is opt-in and reversible. No top-level license was found in the inspected tree. |
+| [fscarmen/client_template at 8b97614](https://github.com/fscarmen/client_template/tree/8b97614b782307d00a74de55d93a26c0d3a2286c) | The Clash template combines a wildcard Fake-IP filter with local bootstrap resolvers and a separate provider. SingForge generates typed profiles and narrows local exceptions. No top-level license was found. |
+| [eooce/Sing-box at a1f2fbc](https://github.com/eooce/Sing-box/tree/a1f2fbc4920f2a440786fdf936110fe7c065f569) | Shell and alternate-host runtimes cover IPv6, Argo and mixed protocols. The shell builds a base64 subscription file and an Nginx alias; some removal paths stop the generic Nginx unit. SingForge isolates its origin process. MIT. |
+| [SagerNet/sing-box at v1.14.4](https://github.com/SagerNet/sing-box/tree/v1.14.4) | Inspected native option definitions, inbound/outbound implementations and versioned docs, including Snell v6, Naive, typed DNS and TLS. SingForge launches the official executable as a separate process. Core license is GPL-3.0-or-later with a name/association notice. |
+| [MetaCubeX/mihomo at v1.19.34](https://github.com/MetaCubeX/mihomo/tree/v1.19.34) | Inspected TLS fingerprint verification and outbound options, then exercised official clients. Mihomo's certificate fingerprint and uTLS client fingerprint have different meanings. The validator is downloaded independently. |
+
+The upstreams were inspected on 2026-11-19. For configuration changes consult [sing-box configuration](https://sing-box.sagernet.org/configuration/), [Mihomo DNS](https://wiki.metacubex.one/en/config/dns/), [Mihomo TLS](https://wiki.metacubex.one/en/config/proxies/tls/), [locally managed Tunnel configuration](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/) and [Cloudflare DNS proxy status](https://developers.cloudflare.com/dns/proxy-status/).
+
+## Rule sources
+
+Repository activity and licenses were checked against public project metadata and the inspected source trees. A recent push dates the repository and can include automated regeneration; individual service lists have separate update dates.
+
+| Source | Last observed push | Format and adoption |
+|---|---|---|
+| [DustinWin/ruleset_geodata](https://github.com/DustinWin/ruleset_geodata) | Nov 18, 2026 | GPL-3.0. Multiple core-specific rule sets; assessed, not bundled. |
+| [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) | Nov 18, 2026 | GPL-3.0. Separate meta/sing branches produce core-specific data. The importer does not decode MRS/SRS. |
+| [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script/tree/0b6897dc17e0c513d25449c935a9694818e32f0c/rule/Clash) | Oct 27, 2026 | GPL-2.0. Pinned Clash classical OpenAI, Claude, YouTube, Netflix and Telegram payloads. Only representable domain and CIDR predicates are imported. |
+| [Loyalsoldier/clash-rules](https://github.com/Loyalsoldier/clash-rules/tree/0b135fd25e104e333a55e75d48ea876d25ce0658) | Nov 17, 2026 | GPL-3.0. Pinned domain GFW payload and China IP CIDR payload with separate parsing. |
+| [SagerNet/sing-geosite](https://github.com/SagerNet/sing-geosite) | Nov 16, 2026 | GPL-3.0-or-later license text. Legacy GeoSite data is distinct from inline typed rule fields and is not loaded. |
+
+SingForge's MIT license covers its original implementation. The optional download operation obtains rule data on the target host. The original licenses continue to govern those data and derived exports. Preserve attribution and review redistribution obligations before publishing rule data, upstream binaries or modified distributions. Separate downloads do not grant relicensing rights. Go dependency notices are in [licenses](licenses/).

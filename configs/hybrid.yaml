@@ -1,0 +1,11 @@
+mode: hybrid
+preset: full
+endpoints:
+  direct: fast.136028.xyz
+  cdn: cdn.136028.xyz
+  tunnel: edge.136028.xyz
+origin:
+  cert: /root/cdn.fullchain.pem
+  key: /root/cdn.key
+  port: 2053
+credentials: /root/named-tunnel.json

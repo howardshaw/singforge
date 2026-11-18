@@ -1,0 +1,32 @@
+name: Verify SingForge
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+      - run: make check
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.10.0 && make scan
+      - run: sudo apt-get update && sudo apt-get install -y nginx
+      - run: scripts/ci-cores.sh "$RUNNER_TEMP/validators"
+      - run: make integration CORE="$RUNNER_TEMP/validators/sing-box" MIHOMO="$RUNNER_TEMP/validators/mihomo" CLOUDFLARED="$RUNNER_TEMP/validators/cloudflared"
+      - run: make release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: singforge-linux
+          path: dist
+  lifecycle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+      - run: make build
+      - run: sudo apt-get update && sudo apt-get install -y nginx
+      - run: sudo env SINGFORGE_DISPOSABLE_VM=1 sh tests/systemd.sh "$PWD/bin/singforge"

@@ -1,0 +1,5 @@
+mode: direct
+preset: recommended
+host: 203.0.113.10
+listen: "::"
+handshake: www.microsoft.com

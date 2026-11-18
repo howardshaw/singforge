@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly SingForge rule refresh
+[Timer]
+OnCalendar=weekly
+RandomizedDelaySec=2h
+Persistent=true
+Unit=singforge-rules.service
+[Install]
+WantedBy=timers.target
