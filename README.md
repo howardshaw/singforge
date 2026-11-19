@@ -79,6 +79,8 @@ The preview shows local intent. Apply checks DNS conflicts, registers the connec
 
 For a private file export use `sudo singforge subscription show --format mihomo --output client.yaml`. For a published URL use `sudo singforge subscription issue --format mihomo` and save the URL privately when displayed. Import it in Clash Verge and test individual nodes under **Main**. The dashboard supports arrows or a number followed by Enter, and 0 to select Exit on the main menu.
 
+In Smart routing, the AI-CN group defaults to DIRECT on fresh imports. Clients with a saved selection can choose DIRECT under AI-CN. International AI stays proxied and strict DNS keeps its encrypted proxy path.
+
 ## Development and releases
 
 Run `make check` locally. Choose **Actions → Publish tagged release → Run workflow** on main and enter the next version, or push a tag. Pushing a semantic version tag such as `v0.1.1` starts the release workflow. GitHub verifies the code, tests a systemd lifecycle on Ubuntu, builds both Linux architectures and publishes binaries, installer, env template, SHA256SUMS and license notices. [Workflow](.github/workflows/release.yml) · [Validation](docs/validation.md) · [Security](docs/security.md)

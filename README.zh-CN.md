@@ -79,6 +79,8 @@ sudo singforge
 
 离线导出使用 `sudo singforge subscription show --format mihomo --output client.yaml`。启用发布后，执行 `sudo singforge subscription issue --format mihomo` 并私下保存显示的 URL。在 Clash Verge 导入后可在 **Main** 中逐个测速、选节点。主菜单支持方向键或数字加 Enter，输入 0 可选中退出。
 
+Smart 路由下，国内 AI 域名匹配 `AI-CN`，首次导入默认选择 `DIRECT`（客户端本地直连）。已保存分组选择的客户端可在「代理 → AI-CN」手动切换到 DIRECT。国际 AI 保持代理，严格模式的 DNS 仍通过加密代理路径解析。
+
 ## 开发与发版
 
 本地检查使用 `make check`。在 GitHub 的 **Actions → Publish tagged release → Run workflow** 中选择 main 并填写新版本号，即可由 CI 打标签和发布。也可以推送形如 `v0.1.1` 的语义版本标签即触发发布。GitHub 在 Ubuntu 上验证代码和 systemd 生命周期，构建两个 Linux 架构，并发布二进制、安装器、env 模板、SHA256SUMS 和许可证。[发布工作流](.github/workflows/release.yml) · [测试说明](docs/validation.md) · [安全说明](docs/security.md)

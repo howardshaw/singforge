@@ -42,6 +42,16 @@ func resolver(s model.State) (string, string) {
 	}
 	return addr, scheme
 }
+
+// Domestic AI traffic can use the client's network while Main and international
+// AI continue to use the selected proxy. The first member is the import default.
+func serviceChoices(group string, nodes []string) []string {
+	if group == "AI-CN" {
+		return append([]string{"DIRECT", "Main"}, nodes...)
+	}
+	return append([]string{"Main"}, nodes...)
+}
+
 func singClient(s model.State, nodes []model.Node) ([]byte, error) {
 	obs := []M{}
 	tags := []string{}
@@ -64,7 +74,7 @@ func singClient(s model.State, nodes []model.Node) ([]byte, error) {
 	rules := []M{{"port": 53, "action": "hijack-dns"}}
 	{
 		for _, g := range []string{"AI", "AI-CN", "Streaming", "Communication"} {
-			obs = append(obs, M{"type": "selector", "tag": g, "outbounds": append([]string{"Main"}, tags...)})
+			obs = append(obs, M{"type": "selector", "tag": g, "outbounds": serviceChoices(g, tags)})
 		}
 	}
 	obs = append(obs, M{"type": "direct", "tag": "DIRECT"})
@@ -323,7 +333,7 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 				groups = append(groups, latencyGroup(edge.Group, edgeTags))
 			}
 			for _, g := range []string{"AI", "AI-CN", "Streaming", "Communication"} {
-				groups = append(groups, M{"name": g, "type": "select", "proxies": append([]string{"Main"}, tags...)})
+				groups = append(groups, M{"name": g, "type": "select", "proxies": serviceChoices(g, tags)})
 			}
 			pol, end := policyBeforeGeo(s)
 			cfg["rules"] = mihomoRules(s, pol, end)

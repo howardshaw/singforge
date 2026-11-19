@@ -67,7 +67,11 @@ func TestPreferredEdgeExport(t *testing.T) {
 		t.Fatal("candidate missing from manual or automatic selection")
 	}
 	for _, g := range p.Groups[3:] {
-		if !slices.Equal(g.Proxies[1:], names) {
+		prefix := []string{"Main"}
+		if g.Name == "AI-CN" {
+			prefix = []string{"DIRECT", "Main"}
+		}
+		if !slices.Equal(g.Proxies, append(prefix, names...)) {
 			t.Fatalf("incomplete %s selector", g.Name)
 		}
 	}
