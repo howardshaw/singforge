@@ -15,6 +15,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
 	"github.com/howardshaw/singforge/internal/model"
@@ -23,7 +24,7 @@ import (
 type choice struct{ en, zh, action string }
 
 var homeChoices = []choice{
-	{"Server overview", "服务器概览", "status"}, {"Public endpoints", "连接入口", "endpoint list"}, {"Protocol catalog", "协议目录", "protocol list"}, {"Subscriptions & QR codes", "订阅与二维码", "subscriptions"}, {"Health check", "运行诊断", "doctor"}, {"Component updates", "组件更新", "updates"}, {"Install or reapply", "安装与部署", "install"}, {"Command reference", "命令参考", "--help"}, {"Exit", "退出", "quit"},
+	{"Server overview", "服务器概览", "status"}, {"Public endpoints", "连接入口", "endpoint list"}, {"Protocol catalog", "协议目录", "protocol list"}, {"Subscriptions & QR codes", "订阅与二维码", "subscriptions"}, {"Health check", "运行诊断", "doctor"}, {"Component updates", "组件更新", "updates"}, {"Install or reapply", "安装与部署", "install"}, {"BBR and kernel tuning", "BBR 与内核调优", "cmd:bbr"}, {"Uninstall SingForge", "卸载 SingForge", "remove-options"}, {"All commands", "全部命令", "cmd:"}, {"Command reference", "命令参考", "--help"}, {"Exit", "退出", "quit"},
 }
 var presets = []choice{{"Recommended", "推荐组合", "recommended"}, {"Minimal", "精简组合", "minimal"}, {"Full", "完整组合", "full"}, {"Custom", "自选协议", "custom"}}
 
@@ -33,6 +34,7 @@ type menuResult struct {
 }
 type dashboard struct {
 	menuTools
+	commandMenu
 	ctx                                             context.Context
 	args                                            []string
 	binary                                          string
@@ -54,6 +56,9 @@ func (m dashboard) paint(code, text string) string {
 	return "\x1b[" + code + "m" + text + "\x1b[0m"
 }
 func (m dashboard) choices() []choice {
+	if strings.HasPrefix(m.page, "cmd:") {
+		return m.commandChoices()
+	}
 	if m.page == "preset" {
 		return presets
 	}
@@ -181,7 +186,7 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.scroll = 0
 	case tea.PasteMsg:
-		if m.page == "publication-form" || m.page == "png-path" || m.page == "renewal-credentials" {
+		if m.page == "flag-value" || m.page == "publication-form" || m.page == "png-path" || m.page == "renewal-credentials" {
 			m.entry = appendForm(m.entry, v.Content)
 		}
 		if m.page == "host" || m.page == "custom" {
@@ -345,8 +350,12 @@ func (m dashboard) View() tea.View {
 	line(m.paint("1", title))
 	line("")
 	hint := m.t("↑/↓ move   Enter open   L 中文   q exit", "↑/↓ 选择   Enter 打开   L English   q 退出")
-	switch m.page {
-	case "home", "preset", "subscriptions", "formats", "updates", "nodes", "preferred-edges":
+	viewPage := m.page
+	if strings.HasPrefix(viewPage, "cmd:") {
+		viewPage = "catalog"
+	}
+	switch viewPage {
+	case "catalog", "remove-options", "home", "preset", "subscriptions", "formats", "updates", "nodes", "preferred-edges":
 		items := m.choices()
 		limit := min(len(items), m.capacity())
 		first := max(0, m.cursor-limit+1)
@@ -361,6 +370,13 @@ func (m dashboard) View() tea.View {
 		if m.page != "home" {
 			hint = m.t("↑/↓ move   Enter select   Esc back", "↑/↓ 选择   Enter 确认   Esc 返回")
 		}
+	case "flag-value":
+		line(m.paint("1", "--"+m.flagName))
+		for _, r := range strings.Split(ansi.Hardwrap(m.flagHelp, w, false), "\n") {
+			line(r)
+		}
+		line(m.paint("36", "❯ "+m.entry+"▏"))
+		hint = m.t("Enter save   Esc cancel", "Enter 保存   Esc 取消")
 	case "publication-form", "png-path", "renewal-credentials":
 		label := m.t("New PNG file path", "新 PNG 文件路径")
 		if m.page == "renewal-credentials" {
@@ -379,7 +395,14 @@ func (m dashboard) View() tea.View {
 		hint = m.t("Enter continue   Esc back", "Enter 继续   Esc 返回")
 	case "tool-confirm":
 		prompt := m.t("Download, verify and apply this update?", "下载、校验并应用更新？")
-		if m.resultKind == "issued" {
+		if m.pending[0] == "uninstall" {
+			prompt = m.t("Confirm the selected local uninstall operation?", "确认执行所选本机卸载操作？")
+			if slices.Contains(m.pending, "--full") || slices.Contains(m.pending, "--full=true") {
+				prompt = m.t("Delete local services, credentials, caches and installed CLI?", "删除本机服务、凭据、缓存及 CLI 本身？")
+			}
+		} else if m.resultKind == "catalog" {
+			prompt = m.t("Run this command?", "执行以下命令？")
+		} else if m.resultKind == "issued" {
 			prompt = m.t("Issue and reveal a private HTTPS subscription URL?", "签发并显示一个新的私密 HTTPS 订阅地址？")
 		} else if m.pending[0] == "edge" {
 			prompt = m.t("Apply this selector to full Mihomo subscriptions?", "将此优选策略应用到完整 Mihomo 订阅？")
@@ -429,7 +452,7 @@ func (m dashboard) View() tea.View {
 	v.AltScreen = true
 	return v
 }
-func menu(args []string) error {
+func menu(args []string, root *cobra.Command) error {
 	exe, e := os.Executable()
 	if e != nil {
 		return e
@@ -440,6 +463,6 @@ func menu(args []string) error {
 	if e != nil || w < 1 || h < 1 {
 		w, h = 80, 24
 	}
-	_, e = tea.NewProgram(dashboard{ctx: ctx, args: args, binary: exe, zh: chinese(), color: os.Getenv("NO_COLOR") == "", width: w, height: h, page: "home"}, tea.WithContext(ctx)).Run()
+	_, e = tea.NewProgram(dashboard{commandMenu: commandMenu{root: root}, ctx: ctx, args: args, binary: exe, zh: chinese(), color: os.Getenv("NO_COLOR") == "", width: w, height: h, page: "home"}, tea.WithContext(ctx)).Run()
 	return e
 }

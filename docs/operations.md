@@ -111,11 +111,19 @@ ledger and sysctl journal are host-local. A fresh restore of a custom-core deplo
 executable. Restore clears subscription grants to prevent an older backup from reviving revoked bearer URLs. Issue fresh
 URLs after restore. Backups are private plaintext with corruption detection; encrypt before storing off-host.
 
-Use `cloudflare dns cleanup --dry-run` then `--yes` if created records should be deleted. Imported tunnels and
-provider-side tunnels remain available for explicit account-level retirement. Offline `uninstall --yes` detaches managed
-services and restores recorded tuning. Add `--purge` to discard active state and local API credentials. The CLI and
-cached release executables can be reused. Removing files is logical deletion; snapshot and SSD retention depend on the
-storage provider.
+## Uninstall
+
+Preview with `sudo singforge uninstall --full --dry-run`. The plan lists managed units, files, directories to remove when empty and recorded firewall or kernel settings to restore. Choose a removal mode:
+
+| Command | Local effect |
+|---|---|
+| `uninstall --yes` | Detach services and boot links, remove the owned renewal hook and restore recorded tuning and ingress. Retain deployment credentials and executables. |
+| `uninstall --purge --yes` | Also discard current deployment state and local API credentials. Keep the CLI and cached executables for restore or reinstall. |
+| `uninstall --full --yes` | Also remove historical generations, DNS ownership metadata, cached and rollback binaries, worker copies and the installed CLI. Works after a previous purge. |
+
+Run the installed CLI at `/usr/local/bin/singforge` for live self-removal. Workspace mode removes only workspace resources. Unknown files are included in the `preserved` result. Back up outside the deployment directory before removing credentials. File deletion does not erase snapshots or SSD backups.
+
+Local removal works offline. To retire owned Cloudflare DNS records, use `cloudflare dns cleanup --dry-run` and `cloudflare dns cleanup --yes` before deleting the local ownership ledger. Retire provider-side tunnels separately. Imported certificate lineages, external credentials, system packages and shared system services remain under operator control.
 
 ## Troubleshooting
 

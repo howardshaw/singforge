@@ -67,16 +67,22 @@ func prepareBin() error {
 	e := os.Mkdir(Bin, 0755)
 	mark := filepath.Join(Bin, ".singforge-owned")
 	if e == nil {
-		return store.Write(mark, []byte("1\n"), 0644)
-	}
-	if !os.IsExist(e) {
+		if e = store.Write(mark, []byte("1\n"), 0644); e != nil {
+			return e
+		}
+	} else if !os.IsExist(e) {
 		return e
 	}
-	d, e := os.ReadFile(mark)
-	if e != nil || string(d) != "1\n" {
+	st, e := os.Lstat(Bin)
+	if e != nil {
+		return e
+	}
+	if !st.IsDir() || !validMarker(mark, "1\n") {
 		return fmt.Errorf("existing unmanaged binary directory %s", Bin)
 	}
-	return nil
+	// DynamicUser services must be able to traverse the binary directory
+	// even when the installation was run with umask 077.
+	return os.Chmod(Bin, 0755)
 }
 func (m Manager) binaries(s model.State) (core, cloud string, err error) {
 	if !m.Live {
@@ -144,21 +150,26 @@ func (m Manager) switchTo(gen string) error {
 
 // The wants link must survive generation garbage collection. systemctl enable
 // resolves the unit symlink and can otherwise pin a soon-to-be-deleted generation.
-func (m Manager) bootLink(n string, enabled bool) error {
+func bootPath(n string) string {
 	target := "multi-user.target.wants"
 	if n == rulesTimer {
 		target = "timers.target.wants"
 	}
-	p := filepath.Join("/etc/systemd/system", target, n)
+	return filepath.Join("/etc/systemd/system", target, n)
+}
+func (m Manager) ownsBootTarget(n, v string) bool {
+	parent := filepath.Dir(v)
+	return v == "../"+n || v == unitLink(n) || (filepath.Base(v) == n && filepath.Dir(parent) == m.Dir && generatedDir.MatchString(filepath.Base(parent)))
+}
+func (m Manager) bootLink(n string, enabled bool) error {
+	p := bootPath(n)
 	want := "../" + n
 	v, e := os.Readlink(p)
 	if e == nil {
 		if v == want && enabled {
 			return nil
 		}
-		parent := filepath.Dir(v)
-		legacy := filepath.Base(v) == n && filepath.Dir(parent) == m.Dir && strings.HasPrefix(filepath.Base(parent), "gen-")
-		if v != want && v != unitLink(n) && !legacy {
+		if !m.ownsBootTarget(n, v) {
 			return fmt.Errorf("unmanaged boot link %s", p)
 		}
 		if e = os.Remove(p); e != nil {
@@ -335,6 +346,11 @@ func (m Manager) Apply(s model.State) error {
 			files[subUnit] = bytes.Replace(files[subUnit], []byte(Bin+"/singforge serve"), []byte(worker+" serve"), 1)
 		}
 	}
+	if !m.Live {
+		if e = markWorkspace(m.Dir); e != nil {
+			return e
+		}
+	}
 	gen, e := os.MkdirTemp(m.Dir, "gen-")
 	if e != nil {
 		return e
@@ -492,6 +508,11 @@ func (m Manager) Uninstall(purge bool) error {
 	if !purge {
 		return nil
 	}
+	if !m.Live {
+		if e = markWorkspace(m.Dir); e != nil {
+			return e
+		}
+	}
 	if e = os.Remove(filepath.Join(m.Dir, "current")); e != nil {
 		return e
 	}
@@ -519,7 +540,7 @@ func removeGeneration(dir, gen string) error {
 		return e
 	}
 	for _, f := range entries {
-		if !slices.Contains([]string{"server.json", "state.json", "renewal-lineage", "bundle.json", "nginx.conf", "origin.key", "origin.crt", "subscription.key", "subscription.crt", "tunnel.json", "tunnel.yml", "connector.token"}, f.Name()) && !slices.Contains(all, f.Name()) {
+		if !generationFile(f.Name()) {
 			unknown = true
 			continue
 		}
@@ -531,4 +552,8 @@ func removeGeneration(dir, gen string) error {
 		return nil
 	}
 	return os.Remove(filepath.Join(dir, gen))
+}
+
+func generationFile(name string) bool {
+	return slices.Contains([]string{"server.json", "state.json", "renewal-lineage", "bundle.json", "nginx.conf", "origin.key", "origin.crt", "subscription.key", "subscription.crt", "tunnel.json", "tunnel.yml", "connector.token"}, name) || slices.Contains(all, name)
 }

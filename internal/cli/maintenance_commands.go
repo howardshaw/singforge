@@ -222,3 +222,18 @@ func (op operation) firewallSync() error {
 	}
 	return printJSON(ports)
 }
+
+func fullUninstall(m host.Manager, dry bool) error {
+	if dry {
+		plan, err := m.RemovalPlan()
+		if err != nil {
+			return err
+		}
+		return printJSON(plan)
+	}
+	plan, err := m.RemoveLocal()
+	if err != nil {
+		return err
+	}
+	return printJSON(map[string]any{"uninstalled": true, "preserved": plan.Preserved})
+}

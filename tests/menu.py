@@ -38,6 +38,21 @@ def smoke(args):
         wait("direct-ss" if args.ssh else "hysteria2")
         os.write(fd,b"\x1b")
         wait("Server management")
+        if not args.ssh:
+            # From the home screen the last three entries are All commands, Help, Exit.
+            os.write(fd,b"\x1b[F")
+            time.sleep(.15)
+            os.write(fd,b"\x1b[A\x1b[A\r")
+            wait("All commands")
+            os.write(fd,b"\x1b[B\r")
+            wait("disable")
+            os.write(fd,b"\x1b[F\x1b[A\r")
+            wait("Review and run")
+            os.write(fd,b"\x1b[F\r")
+            wait("singforge bbr status")
+            for title in ("Review and run", "disable", "All commands", "Server management"):
+                os.write(fd,b"\x1b")
+                wait(title)
         os.write(fd,b"l")
         wait("服务器管理")
         os.write(fd,b"q")

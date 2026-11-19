@@ -74,6 +74,19 @@ sudo singforge backup create --file /root/singforge.backup
 
 [Reality TCP 443、Hysteria2 UDP 443、本机 HTTPS 握手目标与 Tunnel 的组合指南](docs/topologies.zh-CN.md)
 
+### 主菜单与卸载
+
+运行 `sudo singforge`，可直接进入「BBR 与内核调优」或「卸载 SingForge」。在「全部命令」中逐级选择任意公开子命令，填写带星号的必填参数，再选择「核对并执行」。参数值含空格时直接输入完整路径。
+
+| 用途 | 命令 |
+|---|---|
+| 预览完整本机卸载，列出服务、路径和需要恢复的设置 | `sudo singforge uninstall --full --dry-run` |
+| 移除托管服务，保留状态和凭据 | `sudo singforge uninstall --yes` |
+| 同时清除当前部署和本地 API 令牌，保留 CLI 与缓存 | `sudo singforge uninstall --purge --yes` |
+| 完整卸载，包括历史配置、缓存、后台工作程序和已安装的 CLI | `sudo singforge uninstall --full --yes` |
+
+完整卸载可离线执行，并恢复 SingForge 记录的防火墙和 BBR 设置。需要留档时先将备份放到部署目录之外。Cloudflare DNS、远端 Tunnel、Certbot 证书和外部凭据由各自的管理工具维护。如需删除 SingForge 创建的 DNS 记录，请在卸载前执行 `singforge cloudflare dns cleanup --dry-run` 核对，再加 `--yes` 执行。
+
 ### 订阅、二维码和组件更新
 
 在“订阅与二维码”里选择 Clash Verge Rev、Shadowsocks 或 v2rayN 签发独立 HTTPS 地址。签发新链接会保留已有授权。首次发布需要订阅域名以及服务器上的证书链与私钥路径。显示地址后按 `r` 扫码；二维码页面按 `p` 可保存私密 PNG。仅需单个节点时选择“生成节点二维码（离线）”，无需公开订阅。

@@ -74,6 +74,12 @@ With preferred variants enabled, **Auto** compares all exported nodes on the cli
 
 `all` publishes the current built-in domain and IP lists. After upgrading an installation that uses these defaults, reapply `edge set --mode all` to refresh the published candidates. Customize either list with `--domains` or `--ips`. Use `edge status` to inspect candidates, `--mode domains` or `--mode ips` for one address type, and `--mode default` for baseline nodes. IPv6 variants require client IPv6. [Mihomo URL testing](https://wiki.metacubex.one/en/config/proxy-groups/url-test/)
 
+## Dashboard and uninstall
+
+Run `sudo singforge` for BBR and uninstall shortcuts. **All commands** follows the Cobra command tree, including nested operations. Select a flag to enter its value, then review the argument list before running the command.
+
+Use `sudo singforge uninstall --full --dry-run` to preview local removal. `sudo singforge uninstall --full --yes` removes managed services, restores recorded firewall and kernel changes, and removes local credentials, generations, cached executables and the installed CLI. External certificates, provider resources and operator backups have independent lifecycles. [Uninstall modes and DNS cleanup](docs/operations.md#uninstall)
+
 ## Operate
 
 ```sh

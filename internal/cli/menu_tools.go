@@ -13,6 +13,12 @@ import (
 )
 
 var toolMenus = map[string][]choice{
+	"remove-options": {
+		{"Preview full local uninstall", "预览完整本机卸载", "uninstall --full --dry-run"},
+		{"Detach services and keep state", "卸载服务并保留状态", "uninstall --yes"},
+		{"Purge active state and keep CLI", "清除当前状态并保留 CLI", "uninstall --purge --yes"},
+		{"Full local uninstall including CLI", "完整本机卸载（含 CLI）", "uninstall --full --yes"},
+	},
 	"subscriptions": {
 		{"Publication status", "发布状态", "subscription list"},
 		{"Generate subscription URL / QR", "生成订阅地址 / 二维码", "formats"},
@@ -88,7 +94,19 @@ func (m *dashboard) acceptTool(item choice) (tea.Cmd, bool) {
 		m.push(a, title)
 		return nil, true
 	}
+	if cmd, ok := m.acceptCommand(item); ok {
+		return cmd, true
+	}
 	switch m.page {
+	case "remove-options":
+		args := strings.Fields(a)
+		if a == "uninstall --full --dry-run" {
+			m.push("busy", title)
+			return m.command(args...), true
+		}
+		m.push("tool-confirm", title)
+		m.pending = args
+		return nil, true
 	case "subscriptions":
 		if a == "renewal-enable" {
 			m.push("renewal-credentials", title)
@@ -206,6 +224,25 @@ func (m *dashboard) saveQR(path string) error {
 }
 func (m *dashboard) inputTool(key, text string) (tea.Cmd, bool) {
 	switch m.page {
+	case "flag-value":
+		switch key {
+		case "esc":
+			m.pop()
+		case "enter":
+			m.values[m.flagName] = m.entry
+			if m.entry == "" {
+				delete(m.values, m.flagName)
+			}
+			m.pop()
+		case "backspace":
+			r := []rune(m.entry)
+			if len(r) > 0 {
+				m.entry = string(r[:len(r)-1])
+			}
+		default:
+			m.entry = appendForm(m.entry, text)
+		}
+		return nil, true
 	case "publication-form", "png-path", "renewal-credentials":
 		switch key {
 		case "esc":

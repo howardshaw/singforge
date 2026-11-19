@@ -193,7 +193,13 @@ def suite(a, lab):
     assert os.readlink(ws/"current")==active
     cli("core","update","--file",a.core,"--sha256",hashlib.sha256(Path(a.core).read_bytes()).hexdigest())
     cli("core","rollback","--yes")
-    print("PASS hybrid, publication, backup/restore and verified core replacement")
+    plan = json.loads(cli("uninstall", "--full", "--dry-run"))
+    assert str(ws / "current") in plan["files"] and (ws / "current").is_dir()
+    cli("uninstall", "--full", success=False)
+    cli("uninstall", "--purge", "--yes")
+    cli("uninstall", "--full", "--yes")
+    assert not ws.exists() and backup.is_file()
+    print("PASS hybrid, publication, backup/restore, verified core replacement and full uninstall after purge")
 
 if __name__=="__main__":
     parser=argparse.ArgumentParser()

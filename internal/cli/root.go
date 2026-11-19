@@ -90,7 +90,7 @@ var commands = []commandSpec{
 	{"rules set", "Select a routing preset", "profile!", operation.rulesSet},
 	{"backup create", "Save an integrity-checked private backup", "file!", operation.backupCreate},
 	{"backup restore", "Validate and activate a backup", "file!", operation.backupRestore},
-	{"uninstall", "Detach managed services and optionally purge state", "purge", operation.uninstall},
+	{"uninstall", "Remove services, purge state or fully uninstall local SingForge", "purge full", operation.uninstall},
 }
 var defaults = map[string]string{"listen": "::", "preset": "recommended", "mode": "direct", "format": "mihomo", "handshake": "www.microsoft.com"}
 var descriptions = map[string]string{"ips": "Ordered comma-separated Cloudflare IPv4 or IPv6 addresses", "domains": "Ordered comma-separated preferred hostnames (defaults to the community list)", "mihomo-node-dns": "Resolver for exported node hostnames: default or alidns (direct encrypted DNS)", "mihomo-ipv6": "Enable or disable client IPv6 in full Mihomo exports: on or off", "mihomo-policy": "Mihomo DNS policy: strict or split (exact domestic host allowlist)", "connector-token-file": "File containing a dashboard-managed tunnel connector token", "handshake-target": "Reality handshake destination host:port (defaults to the server name on TCP 443)", "config": "Installation YAML manifest; explicit flags override fields", "server-family": "Server-side encrypted resolver address family: ipv4 or ipv6", "ca": "Private CA already trusted by all subscription clients", "family": "Resolver IP family: ipv4 or ipv6", "transport": "Encrypted DNS transport: https or tls", "capture": "Client capture mode: system or tun", "sha256": "Trusted lowercase SHA-256 digest of the binary", "kind": "DOMAIN, DOMAIN-SUFFIX, IP-CIDR or IP-CIDR6", "value": "Match domain or CIDR", "group": "Main, AI, Streaming, Communication, DIRECT or REJECT", "listen": "Local IPv4 or IPv6 bind address", "host": "Public hostname or unbracketed IP address", "preset": "minimal, recommended, full or custom", "protocols": "Comma-separated protocol IDs for custom preset", "mode": "Connectivity mode for this operation", "handshake": "TLS 1.3 hostname for Reality and ShadowTLS", "cdn": "Hybrid CDN hostname", "tunnel": "Hybrid named tunnel hostname", "cert": "PEM certificate chain file", "key": "PEM private key file", "credentials": "Credentials file (Certbot Cloudflare INI for auto-renew, JSON for local tunnels)", "domain": "Cloudflare zone name", "hostname": "Direct hostname relative to the zone", "format": "mihomo, provider, v2ray, sing-box, shadowsocks or uri", "filter": "Select one endpoint ID or access mode", "output": "Create a private output file; with --qr, write PNG", "address": "Comma-separated public IPv4 and IPv6 addresses", "replace-id": "Confirm modification of this existing DNS record ID", "token-file": "File containing a scoped Cloudflare API token", "resolver": "cloudflare, google or quad9", "id": "Protocol or endpoint identifier", "profile": "Configuration profile", "file": "Backup file path", "name": "Named tunnel name"}
@@ -101,7 +101,7 @@ func NewCommand() *cobra.Command {
 		if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) && os.Getenv("TERM") != "dumb" {
 			var options []string
 			c.PersistentFlags().Visit(func(f *pflag.Flag) { options = append(options, "--"+f.Name+"="+f.Value.String()) })
-			return menu(options)
+			return menu(options, root)
 		}
 		return c.Help()
 	}
@@ -138,8 +138,8 @@ func NewCommand() *cobra.Command {
 			name := strings.TrimSuffix(key, "!")
 			f := leaf.Flags()
 			switch name {
-			case "qr", "purge", "all":
-				f.Bool(name, false, map[string]string{"all": "Update core, CLI, rules and enabled connector", "qr": "Render a terminal QR or PNG", "purge": "Remove managed private state"}[name])
+			case "qr", "purge", "full", "all":
+				f.Bool(name, false, map[string]string{"full": "Remove all locally managed files, cached binaries and the installed CLI", "all": "Update core, CLI, rules and enabled connector", "qr": "Render a terminal QR or PNG", "purge": "Remove managed private state"}[name])
 			case "port":
 				f.Int(name, 0, "Port number")
 			case "ttl", "grace":
@@ -176,6 +176,7 @@ func options(f *pflag.FlagSet) opts {
 	o.json, _ = f.GetBool("json")
 	o.all, _ = f.GetBool("all")
 	o.qr, _ = f.GetBool("qr")
+	o.full, _ = f.GetBool("full")
 	o.purge, _ = f.GetBool("purge")
 	o.port, _ = f.GetInt("port")
 	o.ttl, _ = f.GetDuration("ttl")

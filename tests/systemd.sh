@@ -47,4 +47,16 @@ test ! -e /etc/systemd/system/singforge-core.service
 singforge backup restore --file "$tmp/backup" --yes
 singforge doctor
 test "$(readlink /etc/systemd/system/multi-user.target.wants/singforge-core.service)" = ../singforge-core.service
-singforge uninstall --yes --purge
+singforge uninstall --full --dry-run > plan
+test -s plan
+singforge doctor
+if singforge uninstall --full; then exit 1; fi
+singforge uninstall --full --yes
+test ! -e /etc/systemd/system/singforge-core.service
+test ! -e /etc/systemd/system/multi-user.target.wants/singforge-core.service
+test ! -e /var/lib/singforge
+test ! -e /usr/local/lib/singforge
+test ! -e /usr/local/bin/singforge
+test -f "$tmp/backup"
+test -x /usr/sbin/nginx
+echo "PASS full offline uninstall, including CLI and caches"

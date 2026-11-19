@@ -18,11 +18,11 @@ import (
 )
 
 type opts struct {
-	all                       bool
-	str                       map[string]*string
-	yes, dry, qr, purge, json bool
-	port                      int
-	ttl, grace                time.Duration
+	all                             bool
+	str                             map[string]*string
+	yes, dry, qr, purge, full, json bool
+	port                            int
+	ttl, grace                      time.Duration
 }
 
 func (o opts) get(k string) string {
@@ -218,6 +218,25 @@ func execute(cmd string, o opts, handler func(operation) error) error {
 		m.Dir = store.Root
 	} else if !filepath.IsAbs(m.Dir) || filepath.Clean(m.Dir) == store.Root {
 		return fmt.Errorf("use a separate absolute workspace directory")
+	}
+	if cmd == "uninstall" && o.full {
+		if !o.dry && !o.yes {
+			return fmt.Errorf("full uninstall requires --yes")
+		}
+		if o.dry {
+			return fullUninstall(m, true)
+		}
+		if !m.Live {
+			if _, err := m.RemovalPlan(); err != nil {
+				return err
+			}
+		}
+		unlock, err := store.Lock(m.Dir)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		return fullUninstall(m, false)
 	}
 	var wait time.Duration
 	if cmd == "certificate auto-renew sync" && os.Getenv("RENEWED_LINEAGE") != "" {

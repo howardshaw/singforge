@@ -56,6 +56,13 @@ func LockFor(dir string, wait time.Duration) (func(), error) {
 		}
 		time.Sleep(min(100*time.Millisecond, time.Until(deadline)))
 	}
+	// A full uninstall can retire the lock while a deploy hook is waiting.
+	held, err := f.Stat()
+	current, lookup := os.Lstat(filepath.Join(dir, "lock"))
+	if err != nil || lookup != nil || !os.SameFile(held, current) {
+		f.Close()
+		return nil, fmt.Errorf("deployment lock was replaced; retry the operation")
+	}
 	return func() { f.Close() }, nil
 }
 func Sync(dir string) error {
