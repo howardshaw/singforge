@@ -34,10 +34,64 @@ sudoedit /root/singforge/.env
 
 **只有 VPS IP** 时，只填 `PUBLIC_IP`，云服务器经 NAT 时填公网映射地址。`DOMAIN` 留空，两个功能开关保留 false，直接进入「部署与连接」。
 
-**需要直连、Tunnel 和 HTTPS 订阅**时，使用已激活的 Cloudflare 域名。新购域名先在注册商设置 Cloudflare 分配的两个 nameserver，等 Zone 显示 Active。每台服务器使用独立 `PREFIX`，可以共用一个根域名。[域名接入](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/)
+**需要域名、Tunnel 或 HTTPS 订阅时**，把已在 Cloudflare 激活的根域名填入 `DOMAIN`，每台 VPS 使用独立的 `PREFIX`。已有托管域名可以直接从第 3 步创建令牌。
 
-1. 在 Cloudflare「My Profile → API Tokens → Create Token」创建部署令牌。为指定 Zone 授予 **Zone Read、DNS Edit**；开启 Tunnel 时，再给所属账户添加 **Cloudflare Tunnel Write** 或 **Cloudflare One Connector: cloudflared Edit**。
-2. 再创建一枚证书续签令牌，只授予同一 Zone 的 **DNS Edit**。在 VPS 安装依赖并填写以下文件。[创建 Token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) · [Certbot DNS 插件](https://certbot-dns-cloudflare.readthedocs.io/en/stable/)
+<details>
+<summary><strong>1. 在 Spaceship 搜索域名并核对付款金额</strong></summary>
+
+在 [Spaceship](https://www.spaceship.com/) 的「注册」搜索框输入六位数字和候选后缀。对同一组数字比较各后缀的**注册价和续费价**。本次搜索的 54 个可购买报价中，`739462.xyz` 首年最低，注册和续费均显示 ¥4.47。可用性、币种和价格以你下单时的页面为准。
+
+![在 Spaceship 注册搜索框输入六位数字域名](docs/images/domain-setup/01-search.webp)
+![对比各后缀报价，核对绿色结果行中的域名、注册价和续费价](docs/images/domain-setup/02-result.webp)
+
+点击目标域名旁的「加入购物车」→「查看购物车」。若弹出产品推荐，点击「继续前往购物车」。本例只保留一年域名注册，购物车另列 ICANN 费用 ¥1.33。点击「结账」即可查看付款方式和含费总额 ¥5.80。**本次演示停在「立即支付」按钮前**；实际注册成功后，域名才会出现在你的域名管理器中。
+
+<img src="docs/images/domain-setup/03-cart.webp" width="310" alt="购物车仅有一个域名，列出 ICANN 费用和结账按钮"> <img src="docs/images/domain-setup/04-payment.webp" width="310" alt="付款页显示一年注册、应付总额和立即支付按钮">
+
+</details>
+
+<details>
+<summary><strong>2. 将已注册域名的 DNS 托管到 Cloudflare</strong></summary>
+
+1. 登录 Cloudflare，打开 **Domains → Overview → Add domain → Connect a domain**。输入你已注册的根域名，例如 `example.org`。选择自动导入 DNS 记录，继续并选择 **Free** 套餐。
+2. 在 DNS 记录核对页，对照旧 DNS 服务商补齐网站、邮件和验证记录，尤其是 MX、TXT。如果原来启用了 DNSSEC，先按迁移指引处理注册商的旧 DS 记录。复制 Cloudflare 为**这个域名**分配的两台名称服务器。[Cloudflare 域名接入](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/)
+
+![Add a site 页面中的 Connect a domain 入口](docs/images/domain-setup/05-connect.webp)
+![Connect your domain 表单的根域名输入框](docs/images/domain-setup/05-zone.webp)
+
+3. 回到 Spaceship 的「域名管理器」，选中域名 →「名称服务器和 DNS」→「更改」→「自定义名称服务器」。用刚复制的两个主机名替换原 NS，各填一行，保存。回到 Cloudflare 检查委派状态，等 **Domains → Overview** 显示 **Active** 后再部署。也可以运行 `dig +short NS example.org`（替换域名），核对公开查询是否返回同一对 NS。[Spaceship 名称服务器设置](https://www.spaceship.com/knowledgebase/connect-domain-custom-nameservers/)
+
+下面两张图来自已有的 SingForge 域名。实操核对了注册商显示的两台 NS 与 Cloudflare 的分配值，并确认该 Zone 为 **Active**。付款页的候选域名尚未注册。
+
+<img src="docs/images/domain-setup/06-nameservers.webp" width="450" alt="Spaceship 显示域名正在使用自定义 Cloudflare 名称服务器">
+
+![Cloudflare 域名列表显示 Active 和 Free](docs/images/domain-setup/07-active.webp)
+
+</details>
+
+<details>
+<summary><strong>3. 创建部署令牌和独立的证书续签令牌</strong></summary>
+
+在 **My Profile → API Tokens → Create Token** 填写部署令牌名称，例如 `singforge-deploy`。[打开用户令牌页面](https://dash.cloudflare.com/profile/api-tokens)
+
+![Create Token 表单提供 Start from scratch 和 Edit zone DNS 两个入口](docs/images/domain-setup/08-create.webp)
+
+1. 选 **Start from scratch → Start with a Zone policy**。资源设为 **Include → Specific zone → 你的域名**。展开 **DNS & Zones**，在 **DNS** 行勾选 **Edit**，在 **Zone** 行勾选 **Read**。
+2. 启用 Tunnel 时，点 **Add new policy → Add new Account policy**，选择域名所属的具体账户。搜索 `cloudflared`，在 **Cloudflare One Connector: cloudflared** 行勾选 **Edit**。这一项允许管理该账户的 Tunnel。
+
+![指定单个 Zone 并选择 DNS Edit、Zone Read](docs/images/domain-setup/09-zone-policy.webp)
+![账户策略中选中 cloudflared 连接器的 Edit 权限](docs/images/domain-setup/10-account-policy.webp)
+
+3. 选择有效期，点 **Continue to summary**。逐项核对域名、账户、权限和到期日，点击 **Create Token**。立即将只显示一次的密钥单独保存，部署时把原值写入下方的 `cloudflare.token`。
+4. 启用 HTTPS 订阅时，再点 **Create Token**，另取名称（例如 `singforge-renewal`）。选择 **Edit zone DNS → Edit policy**，限定到同一 **Specific zone**。摘要应只列 **DNS: Edit**。创建后把这枚密钥写入 `certbot.ini`。演示令牌有效期均为 7 天；实际使用时让续签凭据覆盖下一次自动续签，或在到期前替换文件中的密钥。[Cloudflare 创建令牌](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+
+![部署令牌签发前的权限和有效期摘要](docs/images/domain-setup/11-deploy-summary.webp)
+![独立续签令牌摘要中只有 DNS Edit](docs/images/domain-setup/12-renew-summary.webp)
+![创建后在 User API Tokens 列表核对两枚令牌](docs/images/domain-setup/13-created.webp)
+
+</details>
+
+在 VPS 上安装依赖并填写私有凭据文件。[Certbot DNS 插件](https://certbot-dns-cloudflare.readthedocs.io/en/stable/)
 
 ```sh
 sudo apt-get update

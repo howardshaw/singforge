@@ -34,10 +34,64 @@ The installer selects the architecture and checks the binary against the SHA-256
 
 For **direct IP only**, fill in `PUBLIC_IP` with the VPS public address (use the public mapping on NAT hosts). Leave `DOMAIN` empty and the two feature switches false. Continue to **Apply and connect**.
 
-For **direct + Tunnel + public subscriptions**, use an active Cloudflare zone. For a newly registered domain, set the registrar's nameservers to the pair assigned by Cloudflare and wait for Active. Pick a different `PREFIX` for every server. [Zone setup](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/)
+For **domain-based deployment**, set `DOMAIN` to the active Cloudflare zone and choose a distinct `PREFIX` for each VPS. If Cloudflare already hosts your domain, skip to step 3.
 
-1. In Cloudflare **My Profile → API Tokens → Create Token**, create a management token with **Zone Read** and **DNS Edit** for this zone. When enabling Tunnel, add **Cloudflare Tunnel Write** (or **Cloudflare One Connector: cloudflared Edit**) on the owning account.
-2. For certificate renewal, create a separate **DNS Edit** token for the same zone. Install the certificate and web-server dependencies on the VPS and prepare the files below. [Token setup](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) · [Certbot DNS plugin](https://certbot-dns-cloudflare.readthedocs.io/en/stable/)
+<details>
+<summary><strong>1. Find a domain on Spaceship and review checkout</strong></summary>
+
+Open [Spaceship](https://www.spaceship.com/) and search under **Register** for six digits and a candidate suffix. Compare registration and renewal prices for the same digits across suffixes. Of the 54 available offers displayed in this search, `739462.xyz` had the lowest first-year price. Registration and renewal were both listed at CNY 4.47. Availability, currency and prices depend on the live quote.
+
+![Six-digit domain entered in the registration search](docs/images/domain-setup/01-search.webp)
+![Search results showing the registration and renewal prices next to Add to cart](docs/images/domain-setup/02-result.webp)
+
+Choose **Add to cart → View cart**. If product recommendations appear, continue to the cart. Keep one year of domain registration and check the fees. This cart added CNY 1.33 in ICANN fees, bringing the total to CNY 5.80. Open **Checkout** to review the payment method and total. **The walkthrough stops at Pay now.** After a successful purchase, the domain appears in your domain manager.
+
+<img src="docs/images/domain-setup/03-cart.webp" width="310" alt="Single-item cart showing the ICANN fee and Checkout button"> <img src="docs/images/domain-setup/04-payment.webp" width="310" alt="Payment page with one year of registration, total and Pay now button">
+
+</details>
+
+<details>
+<summary><strong>2. Delegate a registered domain to Cloudflare</strong></summary>
+
+1. In Cloudflare, open **Domains → Overview → Add domain → Connect a domain**. Enter the registered root domain, such as `example.org`. Choose automatic DNS record import, continue and select the **Free** plan.
+2. Review the imported records against your current DNS provider. Add missing website, mail and verification records, particularly MX and TXT. If DNSSEC is enabled, follow the migration instructions for the existing DS record before changing nameservers. Copy the two nameservers Cloudflare assigns to this domain. [Cloudflare zone setup](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/)
+
+![Connect a domain in Cloudflare's Add a site screen](docs/images/domain-setup/05-connect.webp)
+![Root domain field in the Cloudflare onboarding form](docs/images/domain-setup/05-zone.webp)
+
+3. In Spaceship's domain manager, select the domain and open **Nameservers and DNS → Change → Custom nameservers**. Replace the current entries with the assigned pair, one hostname per field, and save. Return to **Domains → Overview** in Cloudflare and wait for **Active** before provisioning. To check the public delegation, run `dig +short NS example.org` with your domain and compare both names. [Spaceship nameserver settings](https://www.spaceship.com/knowledgebase/connect-domain-custom-nameservers/)
+
+The following screenshots use an existing SingForge domain. We matched its registrar nameservers to the assigned Cloudflare pair and verified the zone was **Active**. The checkout candidate remains unregistered.
+
+<img src="docs/images/domain-setup/06-nameservers.webp" width="450" alt="Spaceship showing the custom Cloudflare nameservers">
+
+![Cloudflare domain overview showing Active status and the Free plan](docs/images/domain-setup/07-active.webp)
+
+</details>
+
+<details>
+<summary><strong>3. Create a deployment token and a separate renewal token</strong></summary>
+
+Open **My Profile → API Tokens → Create Token** and name the deployment token, for example `singforge-deploy`. [User API tokens](https://dash.cloudflare.com/profile/api-tokens)
+
+![Create Token showing Start from scratch and Edit zone DNS](docs/images/domain-setup/08-create.webp)
+
+1. Choose **Start from scratch → Start with a Zone policy**. Set the resource to **Include → Specific zone → your domain**. Expand **DNS & Zones**. Select **Edit** on the **DNS** row and **Read** on the **Zone** row.
+2. When enabling Tunnel, choose **Add new policy → Add new Account policy** and select the specific account that owns the zone. Search for `cloudflared` and select **Edit** on the **Cloudflare One Connector: cloudflared** row. This permission manages tunnels across the selected account.
+
+![DNS Edit and Zone Read scoped to a specific zone](docs/images/domain-setup/09-zone-policy.webp)
+![Account-scoped cloudflared connector Edit permission](docs/images/domain-setup/10-account-policy.webp)
+
+3. Choose an expiration and select **Continue to summary**. Check the domain, account, permissions and expiry before clicking **Create Token**. Save the one-time secret privately. Put the raw value in the VPS deployment file `cloudflare.token` shown below.
+4. For HTTPS subscriptions, create another token with its own name, such as `singforge-renewal`. Choose **Edit zone DNS → Edit policy** and select the same **Specific zone**. The summary should list only **DNS: Edit**. Create the token and use this second secret in `certbot.ini`. Both demo tokens expire after seven days. For unattended renewal, choose a lifetime covering the next renewal or replace the secret in the file before expiry. [Cloudflare token creation](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+
+![Deployment token summary before creation](docs/images/domain-setup/11-deploy-summary.webp)
+![Renewal token summary with DNS Edit only](docs/images/domain-setup/12-renew-summary.webp)
+![Both newly created entries in User API Tokens](docs/images/domain-setup/13-created.webp)
+
+</details>
+
+Install the dependencies on the VPS and fill in the private credential files. [Certbot DNS plugin](https://certbot-dns-cloudflare.readthedocs.io/en/stable/)
 
 ```sh
 sudo apt-get update
