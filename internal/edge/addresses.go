@@ -14,7 +14,7 @@ var cloudflarePrefixes = strings.Fields(`173.245.48.0/20 103.21.244.0/22 103.22.
 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32`)
 
 // DefaultIPs are starting candidates, ordered independently of any client's latency.
-var DefaultIPs = []string{"188.114.96.1", "104.16.132.229"}
+var DefaultIPs = []string{"188.114.96.1"}
 
 func ValidIP(host string) bool {
 	ip, err := netip.ParseAddr(host)

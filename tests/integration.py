@@ -161,11 +161,13 @@ def suite(a, lab):
     inbounds = state()["Inbounds"]
     cli("edge", "set", "--mode", "ips", "--ips", "127.0.0.1", success=False)
     preview = json.loads(cli("edge", "set", "--mode", "domains", "--dry-run"))
-    assert len(preview["preferred_addresses"]) == 8
+    assert preview["community_domains"] and preview["preferred_addresses"] == preview["community_domains"]
     assert json.loads(cli("edge", "status"))["mode"] == "default"
-    cli("edge", "set", "--mode", "all", "--ips", "bestcf.top", success=False)
+    cli("edge", "set", "--mode", "all", "--ips", "edge.example.org", success=False)
     cli("edge", "set", "--mode", "all")
-    assert len(json.loads(cli("edge","status"))["preferred_addresses"]) == 10
+    active_edges = json.loads(cli("edge", "status"))
+    assert active_edges["candidate_ips"]
+    assert active_edges["preferred_addresses"] == preview["community_domains"] + active_edges["candidate_ips"]
     assert state()["Inbounds"] == inbounds
     assert b"Preferred Edge" in cli("subscription", "show", "--format", "mihomo")
     test_edge(a,lab,ws,cli,cert)

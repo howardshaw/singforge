@@ -95,9 +95,9 @@ func TestPreferredEdgeExport(t *testing.T) {
 	if len(direct.Proxies) != 1 || slices.Contains(direct.Groups[0].Proxies, edge.Group) || len(direct.DNS.Node) != 1 {
 		t.Fatal("selector leaked into direct-only export")
 	}
-	s.PreferredEdge = model.EdgePreferences{Mode: "ips", Addresses: []string{"104.16.132.229", "2606:4700::1"}}
+	s.PreferredEdge = model.EdgePreferences{Mode: "ips", Addresses: []string{"188.114.96.1", "2606:4700::1"}}
 	v4 := export("mihomo", "tunnel")
-	if len(v4.Proxies) != 2 || v4.Proxies[1]["server"] != "104.16.132.229" || len(v4.DNS.Node) != 1 {
+	if len(v4.Proxies) != 2 || v4.Proxies[1]["server"] != "188.114.96.1" || len(v4.DNS.Node) != 1 {
 		t.Fatal("unexpected IPv4 or DNS selection")
 	}
 	s.MihomoIPv6 = "on"

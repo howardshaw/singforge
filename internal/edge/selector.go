@@ -9,8 +9,8 @@ import (
 const Group = "Preferred Edge"
 
 var Community = []string{
-	"cf.090227.xyz", "cloudflare.182682.xyz", "bestcf.top", "cdn.2020111.xyz",
-	"cf.0sm.com", "cf.877771.xyz", "cf.zhetengsha.eu.org", "cfip.cfcdn.vip",
+	"cf.090227.xyz", "cloudflare.182682.xyz", "cdn.2020111.xyz",
+	"cf.0sm.com", "cf.877771.xyz",
 }
 
 type Proxy = map[string]any

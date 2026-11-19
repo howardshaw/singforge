@@ -104,11 +104,11 @@ sudo singforge certificate auto-renew test
 ```sh
 sudo singforge edge status
 sudo singforge edge set --mode all
-sudo singforge edge set --mode all --domains cf.090227.xyz,cloudflare.182682.xyz --ips 104.16.132.229
+sudo singforge edge set --mode all --domains cf.090227.xyz,cloudflare.182682.xyz --ips 188.114.96.1
 sudo singforge edge set --mode default
 ```
 
-完整订阅和 Mihomo proxy-provider 都包含这些独立节点。`all` 默认发布八个社区域名和两个 Cloudflare IP 的变体，`ips` 与 `domains` 模式可单独选用。每个变体沿用原入口的 TLS SNI、WebSocket Host、路径、凭据和证书校验。IPv6 候选需要开启客户端 IPv6。[Mihomo 自动选择](https://wiki.metacubex.one/config/proxy-groups/url-test/)
+完整订阅和 Mihomo proxy-provider 都包含这些独立节点。`all` 发布当前版本内置的社区域名和 Cloudflare IP 变体。用 `edge status` 对照内置候选和已发布地址。使用默认列表的部署升级后可重新执行 `edge set --mode all` 更新订阅。`ips` 与 `domains` 模式可单独选用。每个变体沿用原入口的 TLS SNI、WebSocket Host、路径、凭据和证书校验。IPv6 候选需要开启客户端 IPv6。[Mihomo 自动选择](https://wiki.metacubex.one/config/proxy-groups/url-test/)
 
 ### Mihomo 国内外 DNS 分流
 

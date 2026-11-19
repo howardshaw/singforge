@@ -455,8 +455,8 @@ func testFallback(t *testing.T, preferred bool) {
 	if preferred {
 		ids = []string{"vless-ws"}
 		mode, hostname, group = "tunnel", "edge.example.org", "Preferred Edge"
-		s.PreferredEdge = model.EdgePreferences{Mode: "ips", Addresses: []string{"104.16.132.229"}}
-		first, last = "tunnel-vless-ws / 104.16.132.229", "tunnel-vless-ws"
+		s.PreferredEdge = model.EdgePreferences{Mode: "ips", Addresses: []string{"188.114.96.1"}}
+		first, last = "tunnel-vless-ws / 188.114.96.1", "tunnel-vless-ws"
 	}
 	for _, id := range ids {
 		a, e := s.Enable(id)

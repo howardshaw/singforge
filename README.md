@@ -72,7 +72,7 @@ Run `sudo singforge edge set --mode all` on the VPS, then refresh the existing M
 
 With preferred variants enabled, **Auto** compares all exported nodes on the client. **Preferred Edge** compares just the Cloudflare nodes. Both use HTTPS latency checks every 120 seconds with 25 ms switching tolerance. A manual selection pins that node. The latency measurement describes the path to the test URL.
 
-`all` includes eight community domains and two Cloudflare IPs. Customize either list with `--domains` or `--ips`. Use `edge status` to inspect candidates, `--mode domains` or `--mode ips` for one address type, and `--mode default` for baseline nodes. IPv6 variants require client IPv6. [Mihomo URL testing](https://wiki.metacubex.one/en/config/proxy-groups/url-test/)
+`all` publishes the current built-in domain and IP lists. After upgrading an installation that uses these defaults, reapply `edge set --mode all` to refresh the published candidates. Customize either list with `--domains` or `--ips`. Use `edge status` to inspect candidates, `--mode domains` or `--mode ips` for one address type, and `--mode default` for baseline nodes. IPv6 variants require client IPv6. [Mihomo URL testing](https://wiki.metacubex.one/en/config/proxy-groups/url-test/)
 
 ## Operate
 
