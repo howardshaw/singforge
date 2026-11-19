@@ -404,6 +404,11 @@ func TestMihomoFailoverAndCapture(t *testing.T) {
 // Each fixture represents a proxy node and terminates the loopback CONNECT tunnel.
 // The /check response drives Mihomo's real health checker, /data identifies the selected node.
 func TestMihomoLiveFallback(t *testing.T) {
+	t.Run("auto", func(t *testing.T) { testFallback(t, false) })
+	t.Run("preferred edge", func(t *testing.T) { testFallback(t, true) })
+}
+
+func testFallback(t *testing.T, preferred bool) {
 	bin := os.Getenv("MIHOMO_BIN")
 	if bin == "" {
 		t.Skip("requires MIHOMO_BIN")
@@ -441,12 +446,21 @@ func TestMihomoLiveFallback(t *testing.T) {
 	s, _ := model.New("127.0.0.1")
 	s.Routing = "global"
 	s.Capture = "system"
-	for _, id := range []string{"hysteria2", "reality"} {
+	ids := []string{"hysteria2", "reality"}
+	mode, hostname, group := "direct", s.Direct, "Auto"
+	first, last := "direct-reality", "direct-hysteria2"
+	if preferred {
+		ids = []string{"vless-ws"}
+		mode, hostname, group = "tunnel", "edge.example.org", "Preferred Edge"
+		s.PreferredEdge = model.EdgePreferences{Mode: "ips", Addresses: []string{"104.16.132.229"}}
+		first, last = "tunnel-vless-ws / 104.16.132.229", "tunnel-vless-ws"
+	}
+	for _, id := range ids {
 		a, e := s.Enable(id)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = s.Add(id, "direct", s.Direct, a.Port); e != nil {
+		if e = s.Add(id, mode, hostname, a.Port); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -458,10 +472,13 @@ func TestMihomoLiveFallback(t *testing.T) {
 	if e = yaml.Unmarshal(data, &cfg); e != nil {
 		t.Fatal(e)
 	}
-	cfg["proxies"] = []M{node("direct-reality", true), node("direct-hysteria2", false)}
+	cfg["proxies"] = []M{node(first, true), node(last, false)}
+	if preferred {
+		cfg["rules"] = []string{"MATCH,Preferred Edge"}
+	}
 	for _, item := range cfg["proxy-groups"].([]any) {
 		g := item.(M)
-		if g["name"] == "Auto" {
+		if g["name"] == group {
 			g["url"] = "http://192.0.2.1/check"
 			g["interval"] = 1
 		}
@@ -502,9 +519,11 @@ func TestMihomoLiveFallback(t *testing.T) {
 		}
 		t.Fatal("did not route through", id)
 	}
-	expect("direct-reality")
+	expect(first)
 	down.Store(true)
-	expect("direct-hysteria2")
+	expect(last)
+	down.Store(false)
+	expect(first)
 }
 
 func TestSmartGeoRulesFollowServices(t *testing.T) {

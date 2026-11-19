@@ -20,6 +20,8 @@ type commandSpec struct {
 }
 
 var commands = []commandSpec{
+	{"edge status", "Show the Cloudflare baselines and preferred dial addresses", "", operation.preferredEdge},
+	{"edge set", "Select default, domains or ips for the Mihomo Preferred Edge group", "mode! domains ips", operation.preferredEdge},
 	{"certificate auto-renew enable", "Configure Cloudflare DNS-01 and deploy renewed subscription certificates", "credentials!", operation.autoRenew},
 	{"certificate auto-renew status", "Inspect the Certbot timer, authenticator, hook and served leaf", "", operation.autoRenew},
 	{"certificate auto-renew test", "Exercise a staging renewal and verify the live HTTPS origin", "", operation.autoRenew},
@@ -91,7 +93,7 @@ var commands = []commandSpec{
 	{"uninstall", "Detach managed services and optionally purge state", "purge", operation.uninstall},
 }
 var defaults = map[string]string{"listen": "::", "preset": "recommended", "mode": "direct", "format": "mihomo", "handshake": "www.microsoft.com"}
-var descriptions = map[string]string{"mihomo-node-dns": "Resolver for exported node hostnames: default or alidns (direct encrypted DNS)", "mihomo-ipv6": "Enable or disable client IPv6 in full Mihomo exports: on or off", "mihomo-policy": "Mihomo DNS policy: strict or split (exact domestic host allowlist)", "connector-token-file": "File containing a dashboard-managed tunnel connector token", "handshake-target": "Reality handshake destination host:port (defaults to the server name on TCP 443)", "config": "Installation YAML manifest; explicit flags override fields", "server-family": "Server-side encrypted resolver address family: ipv4 or ipv6", "ca": "Private CA already trusted by all subscription clients", "family": "Resolver IP family: ipv4 or ipv6", "transport": "Encrypted DNS transport: https or tls", "capture": "Client capture mode: system or tun", "sha256": "Trusted lowercase SHA-256 digest of the binary", "kind": "DOMAIN, DOMAIN-SUFFIX, IP-CIDR or IP-CIDR6", "value": "Match domain or CIDR", "group": "Main, AI, Streaming, Communication, DIRECT or REJECT", "listen": "Local IPv4 or IPv6 bind address", "host": "Public hostname or unbracketed IP address", "preset": "minimal, recommended, full or custom", "protocols": "Comma-separated protocol IDs for custom preset", "mode": "Connectivity mode for this operation", "handshake": "TLS 1.3 hostname for Reality and ShadowTLS", "cdn": "Hybrid CDN hostname", "tunnel": "Hybrid named tunnel hostname", "cert": "PEM certificate chain file", "key": "PEM private key file", "credentials": "Credentials file (Certbot Cloudflare INI for auto-renew, JSON for local tunnels)", "domain": "Cloudflare zone name", "hostname": "Direct hostname relative to the zone", "format": "mihomo, provider, v2ray, sing-box, shadowsocks or uri", "filter": "Select one endpoint ID or access mode", "output": "Create a private output file; with --qr, write PNG", "address": "Comma-separated public IPv4 and IPv6 addresses", "replace-id": "Confirm modification of this existing DNS record ID", "token-file": "File containing a scoped Cloudflare API token", "resolver": "cloudflare, google or quad9", "id": "Protocol or endpoint identifier", "profile": "Configuration profile", "file": "Backup file path", "name": "Named tunnel name"}
+var descriptions = map[string]string{"ips": "Ordered comma-separated Cloudflare IPv4 or IPv6 addresses", "domains": "Ordered comma-separated preferred hostnames (defaults to the community list)", "mihomo-node-dns": "Resolver for exported node hostnames: default or alidns (direct encrypted DNS)", "mihomo-ipv6": "Enable or disable client IPv6 in full Mihomo exports: on or off", "mihomo-policy": "Mihomo DNS policy: strict or split (exact domestic host allowlist)", "connector-token-file": "File containing a dashboard-managed tunnel connector token", "handshake-target": "Reality handshake destination host:port (defaults to the server name on TCP 443)", "config": "Installation YAML manifest; explicit flags override fields", "server-family": "Server-side encrypted resolver address family: ipv4 or ipv6", "ca": "Private CA already trusted by all subscription clients", "family": "Resolver IP family: ipv4 or ipv6", "transport": "Encrypted DNS transport: https or tls", "capture": "Client capture mode: system or tun", "sha256": "Trusted lowercase SHA-256 digest of the binary", "kind": "DOMAIN, DOMAIN-SUFFIX, IP-CIDR or IP-CIDR6", "value": "Match domain or CIDR", "group": "Main, AI, Streaming, Communication, DIRECT or REJECT", "listen": "Local IPv4 or IPv6 bind address", "host": "Public hostname or unbracketed IP address", "preset": "minimal, recommended, full or custom", "protocols": "Comma-separated protocol IDs for custom preset", "mode": "Connectivity mode for this operation", "handshake": "TLS 1.3 hostname for Reality and ShadowTLS", "cdn": "Hybrid CDN hostname", "tunnel": "Hybrid named tunnel hostname", "cert": "PEM certificate chain file", "key": "PEM private key file", "credentials": "Credentials file (Certbot Cloudflare INI for auto-renew, JSON for local tunnels)", "domain": "Cloudflare zone name", "hostname": "Direct hostname relative to the zone", "format": "mihomo, provider, v2ray, sing-box, shadowsocks or uri", "filter": "Select one endpoint ID or access mode", "output": "Create a private output file; with --qr, write PNG", "address": "Comma-separated public IPv4 and IPv6 addresses", "replace-id": "Confirm modification of this existing DNS record ID", "token-file": "File containing a scoped Cloudflare API token", "resolver": "cloudflare, google or quad9", "id": "Protocol or endpoint identifier", "profile": "Configuration profile", "file": "Backup file path", "name": "Named tunnel name"}
 
 func NewCommand() *cobra.Command {
 	root := &cobra.Command{Use: "singforge", Short: "Deploy and manage a single-host sing-box server", Version: Version + " (sing-box " + host.CoreVersion + ")", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs}
@@ -143,13 +145,18 @@ func NewCommand() *cobra.Command {
 			case "ttl", "grace":
 				f.Duration(name, 0, map[string]string{"ttl": "New grant lifetime (0 means unlimited)", "grace": "Previous grant overlap (for example 15m)"}[name])
 			default:
-				f.String(name, defaults[name], descriptions[name])
+				if spec.path == "edge set" && name == "mode" {
+					f.String(name, "", "Select default, domains or ips")
+				} else {
+					f.String(name, defaults[name], descriptions[name])
+				}
 			}
 			if key != name {
 				_ = leaf.MarkFlagRequired(name)
 			}
 		}
 	}
+
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print compatible core version", Args: cobra.NoArgs, Run: func(c *cobra.Command, _ []string) { c.Print(c.Root().Version + "\n") }})
 	root.AddCommand(&cobra.Command{Use: "serve BUNDLE", Hidden: true, Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, a []string) error { return subscription.Serve(a[0]) }})
 	groupHelp(root)

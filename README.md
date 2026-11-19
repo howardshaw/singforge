@@ -66,6 +66,12 @@ These commands reveal credentials. Files created through `--output` are mode 060
 privately. Ordinary status commands expose endpoint metadata. Direct TLS uses a locally issued certificate with explicit
 client trust. URI exports omit transports that cannot carry this trust. Reimport after certificate rotation.
 
+### Cloudflare Preferred Edge
+
+On the VPS, run `sudo singforge edge set --mode ips` to add two candidate Cloudflare IPs, or specify up to eight addresses in priority order with `--ips 188.114.96.1,104.16.132.229`. Refresh the existing full Mihomo subscription and choose **Main → Preferred Edge**. The selector checks for an HTTP 204 over each authenticated proxy every 120 seconds. It tries healthy candidates first and retains your original CDN or Tunnel WebSocket endpoints at the end of the list. The dial address changes while TLS SNI, certificate verification, WS Host, path and credentials follow your endpoint. IPv6 candidates require client IPv6. Performance depends on the client network.
+
+Use `edge set --mode domains` for the eight community domains, or pass an ordered subset with `--domains`. View the lists with `edge status` and restore hostname-only access with `edge set --mode default`. The server menu exposes these choices under **Subscriptions & QR codes → Preferred Edge selector**. Other export formats continue to use the original nodes. [Mihomo fallback](https://wiki.metacubex.one/en/config/proxy-groups/fallback/) · [Cloudflare IP ranges](https://www.cloudflare.com/ips/)
+
 ## Operate
 
 ```sh

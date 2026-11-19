@@ -21,6 +21,13 @@ var toolMenus = map[string][]choice{
 		{"Automatic certificate renewal", "配置证书自动续签", "renewal-enable"},
 		{"Renewal status", "证书续签状态", "certificate auto-renew status"},
 		{"Test renewal with staging CA", "测试证书续签", "certificate auto-renew test"},
+		{"Preferred Edge selector", "Cloudflare 优选入口", "preferred-edges"},
+	},
+	"preferred-edges": {
+		{"Current edge settings", "查看当前优选设置", "edge status"},
+		{"Use preferred IPs with fallback", "启用优选 IP 并自动回退", "edge set --mode ips"},
+		{"Use community domains with fallback", "启用社区域名并自动回退", "edge set --mode domains"},
+		{"Use default Cloudflare endpoints", "使用默认 Cloudflare 入口", "edge set --mode default"},
 	},
 	"formats": {
 		{"Clash Verge Rev / Mihomo", "Clash Verge Rev / Mihomo", "issue mihomo"},
@@ -103,6 +110,14 @@ func (m *dashboard) acceptTool(item choice) (tea.Cmd, bool) {
 		m.push("busy", title)
 		m.resultKind = a
 		return m.command(strings.Fields(a)...), true
+	case "preferred-edges":
+		if a == "edge status" {
+			m.push("busy", title)
+			return m.command("edge", "status"), true
+		}
+		m.push("tool-confirm", title)
+		m.pending = strings.Fields(a)
+		return nil, true
 	case "formats":
 		m.push("tool-confirm", title)
 		m.pending = []string{"subscription", "issue", "--format", strings.TrimPrefix(a, "issue ")}

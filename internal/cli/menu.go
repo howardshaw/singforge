@@ -346,7 +346,7 @@ func (m dashboard) View() tea.View {
 	line("")
 	hint := m.t("↑/↓ move   Enter open   L 中文   q exit", "↑/↓ 选择   Enter 打开   L English   q 退出")
 	switch m.page {
-	case "home", "preset", "subscriptions", "formats", "updates", "nodes":
+	case "home", "preset", "subscriptions", "formats", "updates", "nodes", "preferred-edges":
 		items := m.choices()
 		limit := min(len(items), m.capacity())
 		first := max(0, m.cursor-limit+1)
@@ -381,6 +381,8 @@ func (m dashboard) View() tea.View {
 		prompt := m.t("Download, verify and apply this update?", "下载、校验并应用更新？")
 		if m.resultKind == "issued" {
 			prompt = m.t("Issue and reveal a private HTTPS subscription URL?", "签发并显示一个新的私密 HTTPS 订阅地址？")
+		} else if m.pending[0] == "edge" {
+			prompt = m.t("Apply this selector to full Mihomo subscriptions?", "将此优选策略应用到完整 Mihomo 订阅？")
 		} else if m.pending[0] == "certificate" {
 			prompt = m.t("Run Certbot DNS-01 automation?", "执行 Certbot DNS-01 自动续签操作？")
 		} else if m.pending[0] == "subscription" {

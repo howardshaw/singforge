@@ -158,6 +158,14 @@ def suite(a, lab):
     cli("cloudflare","enable","--mode","cdn","--host","cdn.example.test","--cert",cert,"--key",key)
     cli("cloudflare","enable","--mode","tunnel","--host","edge.example.test","--credentials",credentials)
     cli("protocol","enable","--id","vmess-ws")
+    inbounds = state()["Inbounds"]
+    cli("edge", "set", "--mode", "ips", "--ips", "127.0.0.1", success=False)
+    preview = json.loads(cli("edge", "set", "--mode", "domains", "--dry-run"))
+    assert len(preview["preferred_addresses"]) == 8
+    assert json.loads(cli("edge", "status"))["mode"] == "default"
+    cli("edge", "set", "--mode", "ips")
+    assert state()["Inbounds"] == inbounds
+    assert b"Preferred Edge" in cli("subscription", "show", "--format", "mihomo")
     test_edge(a,lab,ws,cli,cert)
     if a.cloudflared:
         subprocess.run([a.cloudflared,"tunnel","--config",ws/"current/tunnel.yml","ingress","validate"],check=True)

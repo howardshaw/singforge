@@ -95,6 +95,20 @@ sudo singforge certificate auto-renew test
 
 [凭据、首次签发及 Cloudflare API 自动化](docs/operations.md#certbot-renewal-for-public-subscriptions)
 
+### Cloudflare 优选入口（Clash Verge / Mihomo）
+
+在服务器的「订阅与二维码 → Cloudflare 优选入口」选择优选 IP。然后在 Clash Verge 刷新原有的**完整 Mihomo 订阅**，进入「代理 → Main → Preferred Edge」。默认使用自己的 CDN / Tunnel 域名，IP 模式按配置顺序尝试候选，最终回退到自己的域名。也可以通过 CLI 管理：
+
+```sh
+sudo singforge edge status
+sudo singforge edge set --mode ips
+sudo singforge edge set --mode ips --ips 188.114.96.1,104.16.132.229
+sudo singforge edge set --mode domains --domains cf.090227.xyz,bestcf.top
+sudo singforge edge set --mode default
+```
+
+`--mode ips` 提供两个起始候选，可用 `--ips` 指定最多八个 Cloudflare IPv4 / IPv6 地址。开启客户端 IPv6 后才会导出 IPv6 候选。`--mode domains` 单独使用时提供八个社区候选域名。每个候选仅替换 WebSocket 节点的连接地址，证书校验、TLS SNI、WebSocket Host 和路径沿用原入口。Mihomo 每 120 秒通过节点检查 HTTPS 204 响应，选择顺序靠前的可用入口。既有连接中断后需要重连。固定 IP 的实际效果取决于客户端网络，此模式无需安装测速程序。直连 Reality / Hysteria2 仍可通过原有的 Auto 组使用。[Mihomo 回退策略](https://wiki.metacubex.one/config/proxy-groups/fallback/) · [Cloudflare 公布的 IP 范围](https://www.cloudflare.com/ips/)
+
 ### Mihomo 国内外 DNS 分流
 
 `sudo singforge dns set --mihomo-policy split --mihomo-ipv6 off` 会重新生成完整的 Clash Verge Rev / Mihomo 订阅。smart 模式下仅列入允许名单的普通国内主机使用 AliDNS / DNSPod。中国域名和 IP 分流由 Mihomo 内置的 GEOSITE/GEOIP 数据集匹配，并每 24 小时更新，不会展开成十万条订阅规则。AI 分为国际站 `AI` 与国内站 `AI-CN` 代理组；仅 `split` 模式会将明确列出的国内 AI 域名交给国内加密 DNS，`strict` 模式仍全部使用境外解析器，其他未分类域名的客户端 DNS 默认走 Main。若希望所有公网域名都不交给国内解析器，可选择 `--mihomo-policy strict`。更新订阅后检查 Clash Verge Rev 的实际运行配置，开启 TUN 服务权限，并将 Main 设为 Auto 以启用按优先级故障切换。[配置与测试说明](docs/privacy-routing.md)
