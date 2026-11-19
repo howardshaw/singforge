@@ -25,12 +25,18 @@ func (op operation) subscriptionRotate() error {
 		return fmt.Errorf("negative duration")
 	}
 	if !model.Domain(s.PublishHost) {
-		return fmt.Errorf("publish HTTPS first")
+		return fmt.Errorf("HTTPS publication is off; select Enable HTTPS publication or run singforge subscription publish --help")
 	}
 	if _, _, e := render.Export(s, o.get("format"), ""); e != nil {
 		return e
 	}
-	secret := "https://" + s.PublishHost + "/s/" + subscription.Rotate(&s, time.Now(), o.ttl, o.grace) + "/" + o.get("format")
+	var token string
+	if op.path == "subscription issue" {
+		token = subscription.Issue(&s, time.Now(), o.ttl)
+	} else {
+		token = subscription.Rotate(&s, time.Now(), o.ttl, o.grace)
+	}
+	secret := "https://" + s.PublishHost + "/s/" + token + "/" + o.get("format")
 	return op.commit(s, secret)
 }
 func (op operation) subscriptionRevoke() error {
@@ -42,6 +48,7 @@ func (op operation) subscriptionRevoke() error {
 	}
 	s.Grants = nil
 	if cmd == "subscription unpublish" {
+		s.AutoRenew = false
 		s.PublishHost = ""
 		s.PublishCert = ""
 		s.PublishKey = ""
@@ -52,6 +59,7 @@ func (op operation) subscriptionPublish() error {
 	o := op.options
 	s := op.state
 	var e error
+	s.AutoRenew = false
 	s.PublishHost = o.get("host")
 	s.PublishCA = ""
 	if p := o.get("ca"); p != "" {
@@ -71,4 +79,14 @@ func (op operation) subscriptionPublish() error {
 		return e
 	}
 	return op.commit(s, "")
+}
+
+func (op operation) subscriptionNodes() error {
+	ids := []string{}
+	for _, n := range op.state.Nodes() {
+		if _, _, e := render.Export(op.state, "uri", n.ID); e == nil {
+			ids = append(ids, n.ID)
+		}
+	}
+	return printJSON(ids)
 }

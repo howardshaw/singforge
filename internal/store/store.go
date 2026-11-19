@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/howardshaw/singforge/internal/model"
 )
@@ -28,7 +29,10 @@ func PrivateDir(dir string) error {
 	}
 	return nil
 }
-func Lock(dir string) (func(), error) {
+func Lock(dir string) (func(), error) { return LockFor(dir, 0) }
+
+// LockFor allows an unattended deploy hook to wait for an in-flight transaction.
+func LockFor(dir string, wait time.Duration) (func(), error) {
 	if e := PrivateDir(dir); e != nil {
 		return nil, e
 	}
@@ -36,9 +40,21 @@ func Lock(dir string) (func(), error) {
 	if e != nil {
 		return nil, e
 	}
-	if e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
-		f.Close()
-		return nil, fmt.Errorf("another operation holds the lock")
+	deadline := time.Now().Add(wait)
+	for {
+		e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if e == nil {
+			break
+		}
+		if !errors.Is(e, syscall.EWOULDBLOCK) {
+			f.Close()
+			return nil, e
+		}
+		if !time.Now().Before(deadline) {
+			f.Close()
+			return nil, fmt.Errorf("another operation holds the lock")
+		}
+		time.Sleep(min(100*time.Millisecond, time.Until(deadline)))
 	}
 	return func() { f.Close() }, nil
 }

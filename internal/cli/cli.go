@@ -219,7 +219,11 @@ func execute(cmd string, o opts, handler func(operation) error) error {
 	} else if !filepath.IsAbs(m.Dir) || filepath.Clean(m.Dir) == store.Root {
 		return fmt.Errorf("use a separate absolute workspace directory")
 	}
-	unlock, e := store.Lock(m.Dir)
+	var wait time.Duration
+	if cmd == "certificate auto-renew sync" && os.Getenv("RENEWED_LINEAGE") != "" {
+		wait = 2 * time.Minute
+	}
+	unlock, e := store.LockFor(m.Dir, wait)
 	if e != nil {
 		return e
 	}

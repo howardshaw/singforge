@@ -2,9 +2,11 @@ package host
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -124,25 +126,80 @@ func (m Manager) waitReady(units []string) error {
 	return nil
 }
 
-func (m Manager) Health() error {
-	if !m.Live {
-		return nil
-	}
-	var units []string
-	for _, n := range all {
-		if n == rulesService {
-			continue
-		}
-		if _, e := os.Stat(filepath.Join(m.Dir, "current", n)); e == nil {
-			units = append(units, n)
-		}
-	}
-	if e := m.waitReady(units); e != nil {
-		return e
-	}
-	return m.Service("status")
+type ServiceCheck struct {
+	Unit           string   `json:"unit"`
+	State          string   `json:"state"`
+	SubState       string   `json:"sub_state"`
+	Boot           string   `json:"boot"`
+	PID            int      `json:"pid"`
+	Restarts       int      `json:"restarts"`
+	Listeners      []string `json:"verified_listeners,omitempty"`
+	Missing        []string `json:"missing_listeners,omitempty"`
+	ConnectorReady *bool    `json:"connector_ready,omitempty"`
+	Error          string   `json:"error,omitempty"`
 }
 
+func (m Manager) Checks(s model.State) []ServiceCheck {
+	var checks []ServiceCheck
+	for _, unit := range all {
+		if unit == rulesService {
+			continue
+		}
+		_, err := os.Stat(filepath.Join(m.Dir, "current", unit))
+		if os.IsNotExist(err) {
+			continue
+		}
+		c := ServiceCheck{Unit: unit}
+		b, e := exec.Command("systemctl", "show", "-p", "ActiveState,SubState,MainPID,NRestarts,UnitFileState", unit).Output()
+		if err != nil || e != nil {
+			c.Error = "cannot inspect systemd unit"
+			checks = append(checks, c)
+			continue
+		}
+		fields := map[string]string{}
+		for line := range strings.SplitSeq(string(b), "\n") {
+			k, v, ok := strings.Cut(line, "=")
+			if ok {
+				fields[k] = v
+			}
+		}
+		c.State = fields["ActiveState"]
+		c.SubState = fields["SubState"]
+		c.Boot = fields["UnitFileState"]
+		c.PID, _ = strconv.Atoi(fields["MainPID"])
+		c.Restarts, _ = strconv.Atoi(fields["NRestarts"])
+		owned := processSockets(strconv.Itoa(c.PID))
+		for _, p := range wantedSockets(unit, s) {
+			name := fmt.Sprintf("%s/%d", p.transport, p.port)
+			if owned[p] {
+				c.Listeners = append(c.Listeners, name)
+			} else {
+				c.Missing = append(c.Missing, name)
+			}
+		}
+		sort.Strings(c.Listeners)
+		if c.State != "active" {
+			c.Error = "service is not active"
+		} else if len(c.Missing) > 0 {
+			c.Error = "configured listener missing"
+		}
+		if unit == tunnelUnit {
+			ready := false
+			client := http.Client{Timeout: 3 * time.Second}
+			r, e := client.Get("http://127.0.0.1:19782/ready")
+			if e == nil {
+				ready = r.StatusCode == http.StatusOK
+				r.Body.Close()
+			}
+			c.ConnectorReady = &ready
+			if !ready {
+				c.Error = "tunnel connector is not ready"
+			}
+		}
+		checks = append(checks, c)
+	}
+	return checks
+}
 func (m Manager) ServiceStates() (map[string]string, error) {
 	states := map[string]string{}
 	for _, n := range all {

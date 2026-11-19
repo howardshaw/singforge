@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -51,13 +52,20 @@ func Rotate(s *model.State, now time.Time, ttl, grace time.Duration) string {
 			grants = append(grants, g)
 		}
 	}
+	s.Grants = grants
+	return Issue(s, now, ttl)
+}
+
+// Issue adds a grant without shortening any existing grant.
+func Issue(s *model.State, now time.Time, ttl time.Duration) string {
+	s.Grants = slices.DeleteFunc(s.Grants, func(g model.Grant) bool { return !g.Expires.IsZero() && !g.Expires.After(now) })
 	token := base64.RawURLEncoding.EncodeToString(model.Random(32))
 	sum := sha256.Sum256([]byte(token))
 	g := model.Grant{Digest: hex.EncodeToString(sum[:])}
 	if ttl > 0 {
 		g.Expires = now.Add(ttl)
 	}
-	s.Grants = append(grants, g)
+	s.Grants = append(s.Grants, g)
 	return token
 }
 func Handler(b Bundle) http.Handler {

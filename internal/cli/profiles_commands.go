@@ -16,6 +16,12 @@ import (
 func (op operation) dnsSet() error {
 	o := op.options
 	s := op.state
+	if v := o.get("mihomo-ipv6"); v != "" {
+		s.MihomoIPv6 = v
+	}
+	if v := o.get("mihomo-policy"); v != "" {
+		s.MihomoPolicy = v
+	}
 	if o.get("profile") != "" {
 		s.DNS = o.get("profile")
 	}
@@ -38,11 +44,15 @@ func (op operation) dnsSet() error {
 }
 func (op operation) dnsShow() error {
 	s := op.state
-	return printJSON(map[string]string{"profile": s.DNS, "resolver": s.Resolver, "transport": s.DNSTransport, "capture": s.Capture, "family": s.DNSFamily})
+	mode := s.MihomoPolicy
+	if mode == "" {
+		mode = "strict"
+	}
+	return printJSON(map[string]string{"mihomo_policy": mode, "mihomo_ipv6": s.MihomoIPv6, "profile": s.DNS, "resolver": s.Resolver, "transport": s.DNSTransport, "capture": s.Capture, "family": s.DNSFamily})
 }
 func (op operation) rulesList() error {
 	s := op.state
-	return printJSON(map[string]any{"builtin": render.Smart, "version": s.Rules.Version, "cached_rules": len(s.Rules.Rules), "overrides": s.Overrides})
+	return printJSON(map[string]any{"builtin": render.BuiltinRules(), "version": s.Rules.Version, "cached_rules": len(s.Rules.Rules), "overrides": s.Overrides})
 }
 func (op operation) rulesValidate() error {
 	s := op.state

@@ -14,6 +14,7 @@ check:
 scan:
 	govulncheck ./...
 integration: build
+	MIHOMO_BIN="$(abspath $(MIHOMO))" go test -count=1 -run TestMihomoLive ./internal/render
 	python3 tests/integration.py --cli bin/singforge --core "$(CORE)" --mihomo "$(MIHOMO)" $(if $(CLOUDFLARED),--cloudflared "$(CLOUDFLARED)")
 	python3 tests/menu.py --cli bin/singforge
 	python3 tests/topologies.py --cli bin/singforge --core "$(CORE)" $(if $(CLOUDFLARED),--cloudflared "$(CLOUDFLARED)")

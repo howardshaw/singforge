@@ -15,14 +15,15 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/howardshaw/singforge/internal/model"
 	"golang.org/x/term"
+
+	"github.com/howardshaw/singforge/internal/model"
 )
 
 type choice struct{ en, zh, action string }
 
 var homeChoices = []choice{
-	{"Server overview", "服务器概览", "status"}, {"Public endpoints", "连接入口", "endpoint list"}, {"Protocol catalog", "协议目录", "protocol list"}, {"Subscription status", "订阅状态", "subscription list"}, {"Health check", "运行诊断", "doctor"}, {"Install or reapply", "安装与部署", "install"}, {"Command reference", "命令参考", "--help"}, {"Exit", "退出", "quit"},
+	{"Server overview", "服务器概览", "status"}, {"Public endpoints", "连接入口", "endpoint list"}, {"Protocol catalog", "协议目录", "protocol list"}, {"Subscriptions & QR codes", "订阅与二维码", "subscriptions"}, {"Health check", "运行诊断", "doctor"}, {"Component updates", "组件更新", "updates"}, {"Install or reapply", "安装与部署", "install"}, {"Command reference", "命令参考", "--help"}, {"Exit", "退出", "quit"},
 }
 var presets = []choice{{"Recommended", "推荐组合", "recommended"}, {"Minimal", "精简组合", "minimal"}, {"Full", "完整组合", "full"}, {"Custom", "自选协议", "custom"}}
 
@@ -31,6 +32,7 @@ type menuResult struct {
 	err  error
 }
 type dashboard struct {
+	menuTools
 	ctx                                             context.Context
 	args                                            []string
 	binary                                          string
@@ -54,6 +56,12 @@ func (m dashboard) paint(code, text string) string {
 func (m dashboard) choices() []choice {
 	if m.page == "preset" {
 		return presets
+	}
+	if c, ok := toolMenus[m.page]; ok {
+		return c
+	}
+	if m.page == "nodes" {
+		return m.nodeChoices
 	}
 	return homeChoices
 }
@@ -129,7 +137,7 @@ func (m dashboard) describe(action, raw string) string {
 			return raw
 		}
 		if b.Host == "" {
-			return m.t("Publication is off. Private local exports are available.", "公开订阅已关闭，可通过 CLI 私密导出。")
+			return m.t("HTTPS publication is off. Choose Enable HTTPS publication for subscription links, or Generate node QR for offline import.", "公开订阅已关闭。生成订阅地址前请先启用 HTTPS 发布；离线导入可选生成节点二维码。")
 		}
 		rows = append(rows, "HTTPS  "+b.Host, fmt.Sprintf("%s  %d", m.t("Recorded grants", "授权记录"), b.Grants))
 	default:
@@ -141,6 +149,10 @@ func (m dashboard) describe(action, raw string) string {
 	return strings.TrimSpace(strings.Join(rows, "\n"))
 }
 func (m dashboard) back() dashboard {
+	if len(m.trail) > 0 {
+		m.pop()
+		return m
+	}
 	m.problem = ""
 	m.scroll = 0
 	switch m.page {
@@ -159,6 +171,9 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = v.Width
 		m.height = v.Height
 	case menuResult:
+		if m.toolResult(v) {
+			return m, nil
+		}
 		m.page = "detail"
 		m.body = v.body
 		if v.err != nil && m.body == "" {
@@ -166,6 +181,9 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.scroll = 0
 	case tea.PasteMsg:
+		if m.page == "publication-form" || m.page == "png-path" || m.page == "renewal-credentials" {
+			m.entry = appendForm(m.entry, v.Content)
+		}
 		if m.page == "host" || m.page == "custom" {
 			m.entry = appendEntry(m.entry, v.Content)
 		}
@@ -176,6 +194,9 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "busy" {
 			return m, nil
+		}
+		if cmd, ok := m.inputTool(key, v.Text); ok {
+			return m, cmd
 		}
 		if key == "esc" {
 			if m.page == "home" {
@@ -268,6 +289,9 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = len(items) - 1
 		case "enter":
 			item := items[m.cursor]
+			if cmd, ok := m.acceptTool(item); ok {
+				return m, cmd
+			}
 			if m.page == "preset" {
 				m.preset = item.action
 				m.page = "host"
@@ -300,9 +324,12 @@ func appendEntry(s, text string) string {
 }
 func (m dashboard) capacity() int { return max(1, m.height-8) }
 func (m dashboard) lines() []string {
-	return strings.Split(ansi.Hardwrap(m.body, max(12, m.width-6), false), "\n")
+	return strings.Split(ansi.Hardwrap(m.body, max(8, min(m.width-4, 66)), false), "\n")
 }
 func (m dashboard) View() tea.View {
+	if v, ok := m.toolView(); ok {
+		return v
+	}
 	w := max(10, min(m.width-4, 66))
 	var b strings.Builder
 	line := func(s string) { b.WriteString("  " + ansi.Truncate(s, w, "…") + "\n") }
@@ -319,7 +346,7 @@ func (m dashboard) View() tea.View {
 	line("")
 	hint := m.t("↑/↓ move   Enter open   L 中文   q exit", "↑/↓ 选择   Enter 打开   L English   q 退出")
 	switch m.page {
-	case "home", "preset":
+	case "home", "preset", "subscriptions", "formats", "updates", "nodes":
 		items := m.choices()
 		limit := min(len(items), m.capacity())
 		first := max(0, m.cursor-limit+1)
@@ -331,9 +358,39 @@ func (m dashboard) View() tea.View {
 				line("  " + name)
 			}
 		}
-		if m.page == "preset" {
+		if m.page != "home" {
 			hint = m.t("↑/↓ move   Enter select   Esc back", "↑/↓ 选择   Enter 确认   Esc 返回")
 		}
+	case "publication-form", "png-path", "renewal-credentials":
+		label := m.t("New PNG file path", "新 PNG 文件路径")
+		if m.page == "renewal-credentials" {
+			label = m.t("Root-private Cloudflare DNS INI path", "Cloudflare DNS 凭据 INI 文件路径")
+		}
+		if m.page == "publication-form" {
+			label = []string{m.t("Public HTTPS hostname", "公开订阅域名"), m.t("Certificate chain file", "证书链文件路径"), m.t("Private key file", "私钥文件路径")}[m.fieldIndex]
+		}
+		line(label)
+		line(m.paint("36", "❯ "+m.entry+"▏"))
+		if m.problem != "" {
+			for _, r := range strings.Split(ansi.Hardwrap(m.problem, w, false), "\n") {
+				line(r)
+			}
+		}
+		hint = m.t("Enter continue   Esc back", "Enter 继续   Esc 返回")
+	case "tool-confirm":
+		prompt := m.t("Download, verify and apply this update?", "下载、校验并应用更新？")
+		if m.resultKind == "issued" {
+			prompt = m.t("Issue and reveal a private HTTPS subscription URL?", "签发并显示一个新的私密 HTTPS 订阅地址？")
+		} else if m.pending[0] == "certificate" {
+			prompt = m.t("Run Certbot DNS-01 automation?", "执行 Certbot DNS-01 自动续签操作？")
+		} else if m.pending[0] == "subscription" {
+			prompt = m.t("Enable public HTTPS subscriptions?", "启用公开 HTTPS 订阅？")
+		}
+		line(prompt)
+		for _, r := range strings.Split(ansi.Hardwrap("singforge "+strings.Join(m.pending, " "), w, false), "\n") {
+			line(r)
+		}
+		hint = m.t("Enter confirm   Esc cancel", "Enter 确认   Esc 取消")
 	case "busy":
 		line(m.t("Working…", "正在执行…"))
 		hint = m.t("Ctrl+C exit", "Ctrl+C 退出")
@@ -344,6 +401,9 @@ func (m dashboard) View() tea.View {
 			line(r)
 		}
 		hint = m.t("↑/↓ scroll   Esc back", "↑/↓ 滚动   Esc 返回")
+		if m.qr != "" {
+			hint = m.t("r show QR   Esc close", "r 查看二维码   Esc 关闭")
+		}
 	case "host", "custom":
 		label := m.t("Public IP or hostname", "公网 IP 或域名")
 		if m.page == "custom" {

@@ -1,9 +1,10 @@
 package cli
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestMenuRenderingAndNavigation(t *testing.T) {

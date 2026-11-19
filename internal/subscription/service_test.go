@@ -51,3 +51,26 @@ func TestLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestIssuePreservesEarlierSubscriptions(t *testing.T) {
+	now := time.Now()
+	s := model.State{PublishHost: "sub.example.org"}
+	for _, format := range []string{"mihomo", "shadowsocks", "v2ray"} {
+		token := Issue(&s, now, time.Hour)
+		b := Bundle{Host: s.PublishHost, Grants: s.Grants, Exports: map[string][]byte{format: []byte("private")}}
+		req := httptest.NewRequest("GET", "https://sub.example.org/s/"+token+"/"+format, nil)
+		w := httptest.NewRecorder()
+		Handler(b).ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatal(format, w.Code)
+		}
+	}
+	if len(s.Grants) != 3 {
+		t.Fatal("issuing a URL invalidated another client's grant")
+	}
+	for _, g := range s.Grants {
+		if !g.Expires.Equal(now.Add(time.Hour)) {
+			t.Fatal("expiry changed")
+		}
+	}
+}

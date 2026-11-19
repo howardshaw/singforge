@@ -11,51 +11,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/howardshaw/singforge/internal/model"
-	"github.com/howardshaw/singforge/internal/routing"
 	"gopkg.in/yaml.v3"
+
+	"github.com/howardshaw/singforge/internal/model"
 )
 
-type Rule struct{ Group, Suffix string }
-
-var Smart = []Rule{{"REJECT", "doubleclick.net"}, {"AI", "openai.com"}, {"AI", "chatgpt.com"}, {"AI", "anthropic.com"}, {"AI", "claude.ai"}, {"AI", "gemini.google.com"}, {"AI", "grok.com"}, {"AI", "copilot.microsoft.com"}, {"AI", "perplexity.ai"}, {"Streaming", "youtube.com"}, {"Streaming", "googlevideo.com"}, {"Streaming", "netflix.com"}, {"Streaming", "nflxvideo.net"}, {"Streaming", "disneyplus.com"}, {"Streaming", "primevideo.com"}, {"Streaming", "max.com"}, {"Streaming", "tv.apple.com"}, {"Streaming", "spotify.com"}, {"Streaming", "tiktok.com"}, {"Communication", "telegram.org"}, {"Communication", "t.me"}, {"Communication", "whatsapp.com"}, {"Communication", "discord.com"}, {"Main", "google.com"}, {"Main", "github.com"}, {"Main", "apple.com"}, {"Main", "microsoft.com"}}
-
-func policy(s model.State) ([]routing.Rule, string) {
-	rules := append([]routing.Rule(nil), s.Overrides...)
-	end := "Main"
-	switch s.Routing {
-	case "smart":
-		for _, p := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10"} {
-			kind := "IP-CIDR"
-			if strings.Contains(p, ":") {
-				kind = "IP-CIDR6"
-			}
-			rules = append(rules, routing.Rule{Kind: kind, Value: p, Group: "DIRECT"})
-		}
-		for _, r := range s.Rules.Rules {
-			if r.Group != "Main" && r.Group != "DIRECT" {
-				rules = append(rules, r)
-			}
-		}
-		for _, r := range Smart {
-			rules = append(rules, routing.Rule{Kind: "DOMAIN-SUFFIX", Value: r.Suffix, Group: r.Group})
-		}
-		for _, r := range s.Rules.Rules {
-			if r.Group == "Main" || r.Group == "DIRECT" {
-				rules = append(rules, r)
-			}
-		}
-		rules = append(rules, routing.Rule{Kind: "DOMAIN-SUFFIX", Value: "cn", Group: "DIRECT"})
-	case "gfw-only":
-		for _, r := range s.Rules.Rules {
-			if r.Group == "Main" {
-				rules = append(rules, r)
-			}
-		}
-		end = "DIRECT"
-	}
-	return rules, end
-}
 func Explain(s model.State, domain string) string {
 	rules, end := policy(s)
 	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
@@ -291,52 +251,30 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 	}
 	if format == "mihomo" || format == "provider" {
 		proxies := []M{}
-		tags := []string{}
+		tags := orderedMihomoTags(nodes)
 		for _, n := range nodes {
 			proxies = append(proxies, mihomo(n))
-			tags = append(tags, n.ID)
+
 		}
 		cfg := M{"proxies": proxies}
 		if format == "mihomo" {
-			groups := []M{{"name": "Main", "type": "select", "proxies": append(tags, "Auto")}, {"name": "Auto", "type": "url-test", "proxies": tags, "url": "https://www.gstatic.com/generate_204", "interval": 300}}
-			rules := []string{}
-			{
-				for _, g := range []string{"AI", "Streaming", "Communication"} {
-					groups = append(groups, M{"name": g, "type": "select", "proxies": append([]string{"Main"}, tags...)})
-				}
+			groups := []M{{"name": "Main", "type": "select", "proxies": append([]string{"Auto"}, tags...)}, {"name": "Auto", "type": "fallback", "lazy": false, "proxies": tags, "url": "https://www.gstatic.com/generate_204", "interval": 300}}
+			for _, g := range []string{"AI", "Streaming", "Communication"} {
+				groups = append(groups, M{"name": g, "type": "select", "proxies": append([]string{"Main"}, tags...)})
 			}
-			pol, end := policy(s)
-			for _, r := range pol {
-				line := r.Kind + "," + r.Value + "," + r.Group
-				if strings.HasPrefix(r.Kind, "IP-CIDR") {
-					line += ",no-resolve"
-				}
-				rules = append(rules, line)
-			}
-			cfg["rules"] = append(rules, "MATCH,"+end)
+			pol, end := policyBeforeGeo(s)
+			cfg["rules"] = mihomoRules(cfg, s, pol, end)
 			cfg["proxy-groups"] = groups
 			cfg["mixed-port"] = 7890
 			cfg["allow-lan"] = false
-			cfg["ipv6"] = true
+			ipv6, family := mihomoFamilies(s, nodes)
+			s.DNSFamily = family
+			cfg["ipv6"] = ipv6
 			cfg["mode"] = "rule"
-			addr, scheme := resolver(s)
-			if strings.Contains(addr, ":") {
-				addr = "[" + addr + "]"
-			}
-			doh := "https://" + addr + "/dns-query"
-			if scheme == "tls" {
-				doh = "tls://" + addr + ":853"
-			}
-			if s.Capture == "tun" {
+			if s.Capture != "system" {
 				cfg["tun"] = M{"enable": true, "stack": "mixed", "auto-route": true, "auto-detect-interface": true, "strict-route": true, "dns-hijack": []string{"any:53", "tcp://any:53"}}
 			}
-			dns := M{"enable": true, "ipv6": true, "listen": "127.0.0.1:1053", "enhanced-mode": "fake-ip", "fake-ip-filter": []string{"+.local", "+.lan", "+.home.arpa"}, "respect-rules": true, "default-nameserver": []string{doh}, "proxy-server-nameserver": []string{doh + "#DIRECT"}, "nameserver": []string{doh + "#Main"}}
-			dns["use-system-hosts"] = s.DNS == "balanced"
-			dns["nameserver-policy"] = M{"+.home.arpa": "rcode://name_error", "+.lan": "rcode://name_error", "+.local": "rcode://name_error", "+.localhost": "rcode://name_error"}
-			if s.DNS == "balanced" {
-				dns["nameserver-policy"] = M{"+.home.arpa": "system", "+.lan": "system", "+.local": "system"}
-			}
-			cfg["dns"] = dns
+			cfg["dns"] = mihomoDNS(s, pol, ipv6)
 		}
 		b, e := yaml.Marshal(cfg)
 		return b, warnings, e

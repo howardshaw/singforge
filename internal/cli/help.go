@@ -1,8 +1,9 @@
 package cli
 
 import (
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 func groupHelp(root *cobra.Command) {

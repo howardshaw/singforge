@@ -1,6 +1,8 @@
 # Architecture
 
-The executable enters through `cmd/singforge/main.go`. The Cobra tree in `internal/cli/root.go` attaches each leaf to an operation. Host operations take an exclusive file lock. The private JSON state carries a schema version, protocol credentials, endpoint references and routing policy.
+The executable enters through `cmd/singforge/main.go`. The Cobra tree in `internal/cli/root.go` attaches each leaf to an
+operation. Host operations take an exclusive file lock. The private JSON state carries a schema version, protocol
+credentials, endpoint references and routing policy.
 
 ```mermaid
 flowchart LR
@@ -60,7 +62,8 @@ flowchart LR
     Auth --> ClientConfig
 ```
 
-The publisher receives rendered exports and grant hashes over a systemd-opened input file. It needs neither the deployment lock nor read access to server private keys.
+The publisher receives rendered exports and grant hashes over a systemd-opened input file. It needs neither the
+deployment lock nor read access to server private keys.
 
 ## Update and rollback
 
@@ -89,4 +92,6 @@ stateDiagram-v2
     Detached --> Enabled: attach endpoint
 ```
 
-`internal/model` owns these relations. `internal/render` produces native client and server shapes. `internal/cloudflare` handles API reconciliation. `internal/host` owns generated services, binaries, readiness and rollback. `internal/store` implements locking, atomic file replacement and portable state backup.
+`internal/model` owns these relations. `internal/render` produces native client and server shapes. `internal/cloudflare`
+handles API reconciliation. `internal/host` owns generated services, binaries, readiness and rollback. `internal/store`
+implements locking, atomic file replacement and portable state backup.

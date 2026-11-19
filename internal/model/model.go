@@ -64,6 +64,9 @@ type Grant struct {
 	Expires time.Time
 }
 type State struct {
+	MihomoIPv6                                                                               string `json:",omitempty"`
+	MihomoPolicy                                                                             string `json:",omitempty"`
+	AutoRenew                                                                                bool   `json:",omitempty"`
 	ConnectorToken                                                                           string `json:",omitempty"`
 	RealitySNI, RealityTarget                                                                string
 	ScheduleRules                                                                            bool
@@ -268,6 +271,12 @@ func (s State) Validate() error {
 	}
 	if !slices.Contains([]string{"", "ipv4", "ipv6"}, s.ServerDNSFamily) || !slices.Contains([]string{"", "ipv4", "ipv6"}, s.DNSFamily) || !slices.Contains([]string{"", "https", "tls"}, s.DNSTransport) || !slices.Contains([]string{"", "system", "tun"}, s.Capture) {
 		return fmt.Errorf("unsupported DNS family, capture or transport")
+	}
+	if !slices.Contains([]string{"", "on", "off"}, s.MihomoIPv6) {
+		return fmt.Errorf("unknown Mihomo IPv6 setting")
+	}
+	if !slices.Contains([]string{"", "strict", "split"}, s.MihomoPolicy) {
+		return fmt.Errorf("unknown Mihomo DNS policy")
 	}
 	if !slices.Contains([]string{"strict", "balanced"}, s.DNS) || !slices.Contains([]string{"google", "cloudflare", "quad9"}, s.Resolver) || !slices.Contains([]string{"global", "smart", "gfw-only", "custom"}, s.Routing) {
 		return fmt.Errorf("unknown DNS or routing profile")

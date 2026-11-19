@@ -13,11 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/howardshaw/singforge/internal/model"
 	"github.com/howardshaw/singforge/internal/render"
 	"github.com/howardshaw/singforge/internal/store"
 	"github.com/howardshaw/singforge/internal/subscription"
-	"gopkg.in/yaml.v3"
 )
 
 const coreUnit = "singforge-core.service"
@@ -164,6 +165,9 @@ func Files(s model.State, core, cloud string) (map[string][]byte, error) {
 		}
 	}
 	if s.PublishHost != "" {
+		if s.AutoRenew {
+			files["renewal-lineage"] = []byte(Lineage(s.PublishHost) + "\n")
+		}
 		if e := CheckTrust(s.PublishHost, s.PublishCert, s.PublishKey, s.PublishCA); e != nil {
 			return nil, fmt.Errorf("subscription TLS trust failed: %w", e)
 		}

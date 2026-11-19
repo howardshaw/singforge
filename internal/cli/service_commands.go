@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"github.com/howardshaw/singforge/internal/host"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 func (op operation) install() error {
@@ -40,18 +42,46 @@ func (op operation) status() error {
 func (op operation) doctor() error {
 	m := op.manager
 	s := op.state
-	var e error
 	core, err := m.CorePath(s)
-	if err != nil {
-		return err
-	}
-	if e = exec.Command(core, "check", "-c", filepath.Join(m.Dir, "current/server.json")).Run(); e != nil {
-		return fmt.Errorf("core validation failed")
-	}
+	valid := err == nil && exec.Command(core, "check", "-c", filepath.Join(m.Dir, "current/server.json")).Run() == nil
+	checks := []host.ServiceCheck{}
 	if m.Live {
-		return m.Health()
+		checks = m.Checks(s)
 	}
-	fmt.Println("workspace configuration validated")
+	healthy := valid && (!m.Live || len(checks) > 0)
+	for _, c := range checks {
+		healthy = healthy && c.Error == ""
+	}
+	if op.options.json {
+		if e := printJSON(map[string]any{"configuration_valid": valid, "healthy": healthy, "services": checks}); e != nil {
+			return e
+		}
+	} else {
+		label := "valid"
+		if !valid {
+			label = "failed"
+		}
+		fmt.Println("sing-box configuration  ·  " + label)
+		for _, c := range checks {
+			fmt.Printf("\n%s  ·  %s (%s)\n", c.Unit, c.State, c.SubState)
+			fmt.Printf("  Boot: %s   PID: %d   Restarts: %d\n", c.Boot, c.PID, c.Restarts)
+			if len(c.Listeners) > 0 {
+				fmt.Println("  Listening: " + strings.Join(c.Listeners, ", "))
+			}
+			if len(c.Missing) > 0 {
+				fmt.Println("  Missing: " + strings.Join(c.Missing, ", "))
+			}
+			if c.ConnectorReady != nil {
+				fmt.Printf("  Cloudflare connector ready: %t\n", *c.ConnectorReady)
+			}
+			if c.Error != "" {
+				fmt.Println("  " + c.Error)
+			}
+		}
+	}
+	if !healthy {
+		return fmt.Errorf("one or more health checks failed")
+	}
 	return nil
 }
 func (op operation) start() error {

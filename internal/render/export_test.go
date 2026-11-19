@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/howardshaw/singforge/internal/model"
 	"github.com/howardshaw/singforge/internal/routing"
-	"gopkg.in/yaml.v3"
 )
 
 func TestPrivacyAndExports(t *testing.T) {

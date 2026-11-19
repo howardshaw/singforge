@@ -52,7 +52,7 @@ func cloudCommand(cmd string, s *model.State, m host.Manager, o opts) (bool, boo
 		}
 		return true, false, e
 	case "cloudflare tunnel create":
-		if s.TunnelCredentials != "" {
+		if s.TunnelCredentials != "" || s.ConnectorToken != "" {
 			return true, false, fmt.Errorf("a tunnel is already configured")
 		}
 		if o.dry {

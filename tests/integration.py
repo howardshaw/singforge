@@ -104,6 +104,7 @@ def suite(a, lab):
     qr=lab/"node.png"
     cli("subscription","show","--format","shadowsocks","--filter","direct-ss","--qr","--output",qr)
     assert qr.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a")) and qr.stat().st_mode & 0o777 == 0o600
+    cli("dns","set","--capture","system")  # Keep the test process off the host TUN.
     first = state()
     for inbound in first["Inbounds"]:
         socktype = socket.SOCK_DGRAM if inbound["Protocol"] in ("tuic", "hysteria2") else socket.SOCK_STREAM

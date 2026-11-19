@@ -11,6 +11,10 @@ Generated from Cobra. Append `--help` to any command for flag types and defaults
 | `singforge start` | Start managed services |  |
 | `singforge status` | Show deployment status without credentials |  |
 | `singforge stop` | Stop managed services |  |
+| `singforge certificate auto-renew enable` | Configure Cloudflare DNS-01 and deploy renewed subscription certificates | `--credentials` |
+| `singforge certificate auto-renew status` | Inspect the Certbot timer, authenticator, hook and served leaf |  |
+| `singforge certificate auto-renew sync` | Import the current Certbot certificate and verify HTTPS |  |
+| `singforge certificate auto-renew test` | Exercise a staging renewal and verify the live HTTPS origin |  |
 | `singforge certificate import` | Import a publicly trusted direct TLS certificate and key | `--cert`, `--host`, `--key` |
 | `singforge certificate renew` | Generate a new direct certificate and new client pins |  |
 | `singforge cloudflare configure` | Discover an existing zone using a scoped token | `--domain`, `--token-file` |
@@ -24,7 +28,7 @@ Generated from Cobra. Append `--help` to any command for flag types and defaults
 | `singforge cloudflare tunnel list` | Discover tunnels in the configured account |  |
 | `singforge cloudflare tunnel routes` | Show the required public hostname, path patterns and origins |  |
 | `singforge cloudflare tunnel status` | Inspect tunnel connection status |  |
-| `singforge dns set` | Change client DNS profile or encrypted resolver | `--capture`, `--family`, `--profile`, `--resolver`, `--server-family`, `--transport` |
+| `singforge dns set` | Change client DNS profile or encrypted resolver | `--capture`, `--family`, `--mihomo-ipv`, `--mihomo-policy`, `--profile`, `--resolver`, `--server-family`, `--transport` |
 | `singforge dns show` | Inspect client DNS settings |  |
 | `singforge dns test` | Query a running local client DNS listener | `--host`, `--port` |
 | `singforge domain configure` | Set a DNS-only direct hostname | `--domain`, `--hostname`, `--mode` |
@@ -49,7 +53,9 @@ Generated from Cobra. Append `--help` to any command for flag types and defaults
 | `singforge rules unschedule` | Disable the rule refresh timer |  |
 | `singforge rules update` | Download and verify pinned routing data |  |
 | `singforge rules validate` | Validate cached rules and overrides |  |
+| `singforge subscription issue` | Issue another private HTTPS URL, preserving previous grants | `--format`, `--ttl` |
 | `singforge subscription list` | Inspect publication and grant counts |  |
+| `singforge subscription nodes` | List enabled endpoints with a compatible import URI |  |
 | `singforge subscription publish` | Publish subscriptions over HTTPS | `--ca`, `--cert`, `--host`, `--key` |
 | `singforge subscription revoke` | Invalidate all subscription URLs |  |
 | `singforge subscription rotate` | Issue a bearer URL, invalidating previous grants after grace | `--format`, `--grace`, `--ttl` |

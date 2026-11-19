@@ -49,3 +49,9 @@ This test installs and removes services and reserved host files. It intentionall
 - Traffic evidence for the recommended Vision variant does not extend to every advanced protocol. Reality gRPC, ShadowTLS and platform-specific Naive outbound have narrower validation than the protocols enumerated in the traffic rows.
 - Ubuntu 22.04 is a supported installation target. The recorded Ubuntu guest and VPS both used 24.04.
 - The build produces release files and tagged CI workflows. No public release, hosted CI run or external security audit is claimed.
+
+### Mihomo split DNS and routing acceptance
+
+On 2026-11-19, Mihomo 1.19.34 intercepted UDP and TCP port 53 in an isolated Linux TUN network namespace. TLS resolver fixtures recorded the queried names. AI and an unclassified .cn name reached only the proxied foreign fixture, the exact domestic control reached the direct domestic fixture, and losing the proxy made a fresh AI query fail while the domestic control still answered. A separate live fallback test observed Reality-priority adapter selection and the switch to the second adapter after the first failed health checks. These tests cover traffic handled by the core.
+
+The deployed full subscription contained 110,177 pinned CN domain predicates, 6,217 IPv4 and 3,423 IPv6 CN prefixes. Both the official 1.19.34 core and Clash Verge Rev's installed 1.19.33 core parsed the published bytes. The unmodified subscription then captured DNS and carried a certificate-verified HTTPS request through the expected VPS egress from a disposable Linux TUN client.

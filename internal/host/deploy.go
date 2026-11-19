@@ -484,6 +484,11 @@ func (m Manager) Uninstall(purge bool) error {
 			return e
 		}
 	}
+	if m.Live {
+		if e = RemoveRenewalHook(); e != nil {
+			return e
+		}
+	}
 	if !purge {
 		return nil
 	}
@@ -514,7 +519,7 @@ func removeGeneration(dir, gen string) error {
 		return e
 	}
 	for _, f := range entries {
-		if !slices.Contains([]string{"server.json", "state.json", "bundle.json", "nginx.conf", "origin.key", "origin.crt", "subscription.key", "subscription.crt", "tunnel.json", "tunnel.yml", "connector.token"}, f.Name()) && !slices.Contains(all, f.Name()) {
+		if !slices.Contains([]string{"server.json", "state.json", "renewal-lineage", "bundle.json", "nginx.conf", "origin.key", "origin.crt", "subscription.key", "subscription.crt", "tunnel.json", "tunnel.yml", "connector.token"}, f.Name()) && !slices.Contains(all, f.Name()) {
 			unknown = true
 			continue
 		}

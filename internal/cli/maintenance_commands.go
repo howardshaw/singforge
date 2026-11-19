@@ -96,6 +96,7 @@ func (op operation) backupRestore() error {
 		return e
 	}
 	// Backups can predate revocation. Restoring node credentials must not revive grants.
+	s.AutoRenew = false
 	s.Grants = nil
 	return op.commit(s, "")
 }

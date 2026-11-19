@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/howardshaw/singforge/internal/cli"
 	"os"
+
+	"github.com/howardshaw/singforge/internal/cli"
 )
 
 func main() {
