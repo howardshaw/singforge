@@ -59,27 +59,37 @@ func TestPreferredEdgeExport(t *testing.T) {
 	}
 	g := p.Groups[2]
 	want := []string{"tunnel-vless-ws", "cdn-trojan-ws", "cdn-vmess-ws"}
-	if g.Name != edge.Group || g.Type != "fallback" || !slices.Equal(g.Proxies[6:], want) {
-		t.Fatal("baseline order", g)
+	if g.Name != edge.Group || g.Type != "url-test" || p.Groups[1].Type != "url-test" {
+		t.Fatal("missing client latency selection")
 	}
-	for i, addr := range s.PreferredEdge.Addresses {
-		if len(p.DNS.Node[addr]) != 2 || p.DNS.Policy[addr] != nil {
-			t.Fatal("incorrect DNS scope")
+	names := proxyNames(p.Proxies)
+	if !slices.Equal(p.Groups[0].Proxies[2:], names) || !slices.Equal(p.Groups[1].Proxies, names) || !slices.Equal(g.Proxies, names[:9]) {
+		t.Fatal("candidate missing from manual or automatic selection")
+	}
+	for _, g := range p.Groups[3:] {
+		if !slices.Equal(g.Proxies[1:], names) {
+			t.Fatalf("incomplete %s selector", g.Name)
 		}
-		for j := range want {
-			clone := p.Proxies[4+i*len(want)+j]
-			if clone["server"] != addr || clone["name"] != g.Proxies[i*len(want)+j] {
-				t.Fatal("candidate priority")
+	}
+	for j, baseID := range want {
+		base := p.Proxies[j*3]
+		if base["name"] != baseID {
+			t.Fatal("unexpected baseline order")
+		}
+		for i, addr := range s.PreferredEdge.Addresses {
+			clone := p.Proxies[j*3+1+i]
+			if clone["server"] != addr || clone["name"] != baseID+" / "+addr || len(p.DNS.Node[addr]) != 2 || p.DNS.Policy[addr] != nil {
+				t.Fatal("wrong dial address or DNS scope")
 			}
-			clone["server"] = p.Proxies[j]["server"]
-			clone["name"] = p.Proxies[j]["name"]
-			if !reflect.DeepEqual(clone, p.Proxies[j]) {
+			clone["server"], clone["name"] = base["server"], base["name"]
+			if !reflect.DeepEqual(clone, base) {
 				t.Fatal("WS identity or credentials changed")
 			}
 		}
 	}
-	if len(export("provider", "").Proxies) != 4 {
-		t.Fatal("full-profile selector leaked into provider")
+	provider := export("provider", "")
+	if len(provider.Groups) != 0 || !slices.Equal(proxyNames(provider.Proxies), names) {
+		t.Fatal("incomplete provider")
 	}
 	direct := export("mihomo", "direct")
 	if len(direct.Proxies) != 1 || slices.Contains(direct.Groups[0].Proxies, edge.Group) || len(direct.DNS.Node) != 1 {

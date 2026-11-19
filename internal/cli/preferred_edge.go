@@ -21,31 +21,26 @@ func (op operation) preferredEdge() error {
 	if op.path == "edge set" {
 		mode := op.options.get("mode")
 		domains, ips := op.options.get("domains"), op.options.get("ips")
-		if domains != "" && mode != "domains" || ips != "" && mode != "ips" {
-			return fmt.Errorf("use --domains with --mode domains or --ips with --mode ips")
+		if domains != "" && mode != "domains" && mode != "all" || ips != "" && mode != "ips" && mode != "all" {
+			return fmt.Errorf("--domains requires domains or all mode; --ips requires ips or all mode")
 		}
 		p := model.EdgePreferences{Mode: mode}
-		var list string
-		switch mode {
-		case "default":
-		case "domains":
-			list = domains
-			p.Addresses = slices.Clone(edge.Community)
-		case "ips":
-			list = ips
-			p.Addresses = slices.Clone(edge.DefaultIPs)
-		default:
-			return fmt.Errorf("choose --mode default, domains or ips")
-		}
-		if list != "" {
-			p.Addresses = strings.Split(list, ",")
-			for i, h := range p.Addresses {
-				h = strings.ToLower(strings.TrimSpace(h))
-				if ip, err := netip.ParseAddr(h); mode == "ips" && err == nil {
-					h = ip.String()
-				}
-				p.Addresses[i] = h
+		if mode == "domains" || mode == "all" {
+			addrs, err := edgeList("domains", domains, edge.Community)
+			if err != nil {
+				return err
 			}
+			p.Addresses = append(p.Addresses, addrs...)
+		}
+		if mode == "ips" || mode == "all" {
+			addrs, err := edgeList("ips", ips, edge.DefaultIPs)
+			if err != nil {
+				return err
+			}
+			p.Addresses = append(p.Addresses, addrs...)
+		}
+		if mode == "" {
+			return fmt.Errorf("choose an edge mode")
 		}
 		if err := p.Validate(); err != nil {
 			return err
@@ -63,4 +58,19 @@ func (op operation) preferredEdge() error {
 		mode = "default"
 	}
 	return printJSON(map[string]any{"mode": mode, "baselines": baselines, "preferred_addresses": s.PreferredEdge.Addresses, "community_domains": edge.Community, "candidate_ips": edge.DefaultIPs})
+}
+
+func edgeList(kind, raw string, defaults []string) ([]string, error) {
+	if raw == "" {
+		return defaults, nil
+	}
+	list := strings.Split(raw, ",")
+	for i, value := range list {
+		h := strings.ToLower(strings.TrimSpace(value))
+		if ip, err := netip.ParseAddr(h); kind == "ips" && err == nil {
+			h = ip.String()
+		}
+		list[i] = h
+	}
+	return list, (model.EdgePreferences{Mode: kind, Addresses: list}).Validate()
 }

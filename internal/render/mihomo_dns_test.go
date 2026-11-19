@@ -434,6 +434,9 @@ func testFallback(t *testing.T, preferred bool) {
 			}
 			req.Body.Close()
 			if req.URL.Path == "/check" {
+				if preferred && !primary {
+					time.Sleep(150 * time.Millisecond)
+				}
 				fmt.Fprint(b, "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
 			} else {
 				fmt.Fprintf(b, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(id), id)
@@ -478,7 +481,7 @@ func testFallback(t *testing.T, preferred bool) {
 	}
 	for _, item := range cfg["proxy-groups"].([]any) {
 		g := item.(M)
-		if g["name"] == group {
+		if g["name"] == group || (preferred && g["name"] == "Auto") {
 			g["url"] = "http://192.0.2.1/check"
 			g["interval"] = 1
 		}

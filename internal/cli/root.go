@@ -21,7 +21,7 @@ type commandSpec struct {
 
 var commands = []commandSpec{
 	{"edge status", "Show the Cloudflare baselines and preferred dial addresses", "", operation.preferredEdge},
-	{"edge set", "Select default, domains or ips for the Mihomo Preferred Edge group", "mode! domains ips", operation.preferredEdge},
+	{"edge set", "Publish Cloudflare endpoint variants as selectable Mihomo nodes", "mode! domains ips", operation.preferredEdge},
 	{"certificate auto-renew enable", "Configure Cloudflare DNS-01 and deploy renewed subscription certificates", "credentials!", operation.autoRenew},
 	{"certificate auto-renew status", "Inspect the Certbot timer, authenticator, hook and served leaf", "", operation.autoRenew},
 	{"certificate auto-renew test", "Exercise a staging renewal and verify the live HTTPS origin", "", operation.autoRenew},
@@ -146,7 +146,7 @@ func NewCommand() *cobra.Command {
 				f.Duration(name, 0, map[string]string{"ttl": "New grant lifetime (0 means unlimited)", "grace": "Previous grant overlap (for example 15m)"}[name])
 			default:
 				if spec.path == "edge set" && name == "mode" {
-					f.String(name, "", "Select default, domains or ips")
+					f.String(name, "", "Select default, domains, ips or all")
 				} else {
 					f.String(name, defaults[name], descriptions[name])
 				}

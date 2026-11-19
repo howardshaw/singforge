@@ -68,9 +68,11 @@ client trust. URI exports omit transports that cannot carry this trust. Reimport
 
 ### Cloudflare Preferred Edge
 
-On the VPS, run `sudo singforge edge set --mode ips` to add two candidate Cloudflare IPs, or specify up to eight addresses in priority order with `--ips 188.114.96.1,104.16.132.229`. Refresh the existing full Mihomo subscription and choose **Main → Preferred Edge**. The selector checks for an HTTP 204 over each authenticated proxy every 120 seconds. It tries healthy candidates first and retains your original CDN or Tunnel WebSocket endpoints at the end of the list. The dial address changes while TLS SNI, certificate verification, WS Host, path and credentials follow your endpoint. IPv6 candidates require client IPv6. Performance depends on the client network.
+Run `sudo singforge edge set --mode all` on the VPS, then refresh the existing Mihomo subscription URL. In Clash Verge, open **Proxies → Main**, test the delays and select any individual node. Each CDN or Tunnel WebSocket protocol has a separate entry for the original hostname and each candidate. The provider export includes the same nodes. TLS SNI, WS Host, path, credentials and certificate verification follow the original endpoint.
 
-Use `edge set --mode domains` for the eight community domains, or pass an ordered subset with `--domains`. View the lists with `edge status` and restore hostname-only access with `edge set --mode default`. The server menu exposes these choices under **Subscriptions & QR codes → Preferred Edge selector**. Other export formats continue to use the original nodes. [Mihomo fallback](https://wiki.metacubex.one/en/config/proxy-groups/fallback/) · [Cloudflare IP ranges](https://www.cloudflare.com/ips/)
+With preferred variants enabled, **Auto** compares all exported nodes on the client. **Preferred Edge** compares just the Cloudflare nodes. Both use HTTPS latency checks every 120 seconds with 25 ms switching tolerance. A manual selection pins that node. The latency measurement describes the path to the test URL.
+
+`all` includes eight community domains and two Cloudflare IPs. Customize either list with `--domains` or `--ips`. Use `edge status` to inspect candidates, `--mode domains` or `--mode ips` for one address type, and `--mode default` for baseline nodes. IPv6 variants require client IPv6. [Mihomo URL testing](https://wiki.metacubex.one/en/config/proxy-groups/url-test/)
 
 ## Operate
 

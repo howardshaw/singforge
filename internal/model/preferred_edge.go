@@ -19,23 +19,29 @@ func (p EdgePreferences) Validate() error {
 			return fmt.Errorf("default edge mode uses the endpoint's own hostname")
 		}
 		return nil
-	case "ips", "domains":
+	case "ips", "domains", "all":
 	default:
-		return fmt.Errorf("choose --mode default, domains or ips")
+		return fmt.Errorf("choose --mode default, domains, ips or all")
 	}
-	if len(p.Addresses) == 0 || len(p.Addresses) > 8 {
-		return fmt.Errorf("select one to eight preferred edge addresses")
+	if len(p.Addresses) == 0 {
+		return fmt.Errorf("select at least one preferred edge address")
 	}
+	domains, ips := 0, 0
 	for i, h := range p.Addresses {
 		if slices.Contains(p.Addresses[:i], h) {
 			return fmt.Errorf("duplicate preferred edge address")
 		}
-		if p.Mode == "ips" && !edge.ValidIP(h) {
-			return fmt.Errorf("expected an individual Cloudflare IP within its published ranges")
+		switch {
+		case Domain(h) && p.Mode != "ips":
+			domains++
+		case edge.ValidIP(h) && p.Mode != "domains":
+			ips++
+		default:
+			return fmt.Errorf("invalid %s edge address %q", p.Mode, h)
 		}
-		if p.Mode == "domains" && !Domain(h) {
-			return fmt.Errorf("expected a preferred DNS hostname")
-		}
+	}
+	if domains > 8 || ips > 8 {
+		return fmt.Errorf("choose at most eight domains and eight Cloudflare IPs")
 	}
 	return nil
 }

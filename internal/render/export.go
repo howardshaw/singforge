@@ -236,6 +236,18 @@ func uri(n model.Node) string {
 	}
 	return (&url.URL{Scheme: n.Spec.Type, User: url.User(user), Host: host, RawQuery: q.Encode(), Fragment: n.ID}).String()
 }
+func proxyNames(proxies []M) []string {
+	names := make([]string, 0, len(proxies))
+	for _, p := range proxies {
+		names = append(names, p["name"].(string))
+	}
+	return names
+}
+
+func latencyGroup(name string, tags []string) M {
+	return M{"name": name, "type": "url-test", "proxies": tags, "url": "https://www.gstatic.com/generate_204", "expected-status": "204", "interval": 120, "timeout": 5000, "tolerance": 25, "lazy": false}
+}
+
 func Export(s model.State, format, filter string) ([]byte, []string, error) {
 	var nodes []model.Node
 	var warnings []string
@@ -270,33 +282,45 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 		return b, warnings, e
 	}
 	if format == "mihomo" || format == "provider" {
-		proxies := []M{}
-		var bases []M
-		tags := orderedMihomoTags(nodes)
-		for _, n := range nodes {
-			p := mihomo(n)
-			proxies = append(proxies, p)
-			if (n.Mode == "cdn" || n.Mode == "tunnel") && n.Spec.WS {
-				bases = append(bases, p)
+		ipv6, family := mihomoFamilies(s, nodes)
+		var proxies []M
+		var edgeTags []string
+		var eligible, omitted []string
+		for _, h := range s.PreferredEdge.Addresses {
+			if !ipv6 && strings.Contains(h, ":") {
+				omitted = append(omitted, h+" omitted because client IPv6 is disabled")
+			} else {
+				eligible = append(eligible, h)
 			}
+		}
+		for _, n := range nodes {
+			base := mihomo(n)
+			proxies = append(proxies, base)
+			if n.Spec.WS && (n.Mode == "cdn" || n.Mode == "tunnel") {
+				variants := edge.Variants(base, eligible)
+				proxies = append(proxies, variants...)
+				edgeTags = append(edgeTags, n.ID)
+				edgeTags = append(edgeTags, proxyNames(variants)...)
+			}
+		}
+		if len(edgeTags) > 0 {
+			warnings = append(warnings, omitted...)
 		}
 		cfg := M{"proxies": proxies}
 		if format == "mihomo" {
-			groups := []M{{"name": "Main", "type": "select", "proxies": append([]string{"Auto"}, tags...)}, {"name": "Auto", "type": "fallback", "lazy": false, "proxies": tags, "url": "https://www.gstatic.com/generate_204", "interval": 300}}
-			ipv6, family := mihomoFamilies(s, nodes)
-			if len(bases) > 0 {
-				var eligible []string
-				for _, h := range s.PreferredEdge.Addresses {
-					if !ipv6 && strings.Contains(h, ":") {
-						warnings = append(warnings, h+" omitted from Preferred Edge because client IPv6 is disabled")
-						continue
-					}
-					eligible = append(eligible, h)
-				}
-				variants, names := edge.Variants(bases, eligible)
-				cfg["proxies"] = append(proxies, variants...)
-				groups[0]["proxies"] = append([]string{"Auto", edge.Group}, tags...)
-				groups = append(groups, M{"name": edge.Group, "type": "fallback", "proxies": names, "url": "https://www.gstatic.com/generate_204", "expected-status": "204", "interval": 120, "timeout": 5000, "lazy": false})
+			tags := orderedMihomoTags(nodes)
+			auto := M{"name": "Auto", "type": "fallback", "lazy": false, "proxies": tags, "url": "https://www.gstatic.com/generate_204", "interval": 300}
+			if len(proxies) > len(nodes) {
+				tags = proxyNames(proxies)
+				auto = latencyGroup("Auto", tags)
+			}
+			choices := []string{"Auto"}
+			if len(edgeTags) > 0 {
+				choices = append(choices, edge.Group)
+			}
+			groups := []M{{"name": "Main", "type": "select", "proxies": append(choices, tags...)}, auto}
+			if len(edgeTags) > 0 {
+				groups = append(groups, latencyGroup(edge.Group, edgeTags))
 			}
 			for _, g := range []string{"AI", "AI-CN", "Streaming", "Communication"} {
 				groups = append(groups, M{"name": g, "type": "select", "proxies": append([]string{"Main"}, tags...)})
@@ -320,11 +344,8 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 			dns := mihomoDNS(s, pol, ipv6)
 			if s.MihomoNodeDNS == "alidns" {
 				hosts := []string{}
-				for _, n := range nodes {
-					hosts = append(hosts, n.Host)
-				}
-				if len(bases) > 0 {
-					hosts = append(hosts, s.PreferredEdge.Addresses...)
+				for _, p := range proxies {
+					hosts = append(hosts, p["server"].(string))
 				}
 				addNodeDNS(dns, hosts, family, s.DNSTransport)
 			}

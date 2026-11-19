@@ -34,7 +34,7 @@ Generated from Cobra. Append `--help` to any command for flag types and defaults
 | `singforge domain configure` | Set a DNS-only direct hostname | `--domain`, `--hostname`, `--mode` |
 | `singforge domain status` | Inspect configured hostnames |  |
 | `singforge domain sync` | Reconcile configured DNS records | `--address`, `--replace-id` |
-| `singforge edge set` | Select default, domains or ips for the Mihomo Preferred Edge group | `--domains`, `--ips`, `--mode` |
+| `singforge edge set` | Publish Cloudflare endpoint variants as selectable Mihomo nodes | `--domains`, `--ips`, `--mode` |
 | `singforge edge status` | Show the Cloudflare baselines and preferred dial addresses |  |
 | `singforge endpoint add` | Add or update a public endpoint | `--host`, `--id`, `--mode`, `--name`, `--port` |
 | `singforge endpoint list` | List public endpoints |  |

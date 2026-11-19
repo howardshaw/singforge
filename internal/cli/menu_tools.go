@@ -25,8 +25,9 @@ var toolMenus = map[string][]choice{
 	},
 	"preferred-edges": {
 		{"Current edge settings", "查看当前优选设置", "edge status"},
-		{"Use preferred IPs with fallback", "启用优选 IP 并自动回退", "edge set --mode ips"},
-		{"Use community domains with fallback", "启用社区域名并自动回退", "edge set --mode domains"},
+		{"Publish all domain and IP nodes", "发布全部优选域名和 IP 节点", "edge set --mode all"},
+		{"Publish preferred IP nodes", "发布优选 IP 节点", "edge set --mode ips"},
+		{"Publish community domain nodes", "发布社区域名节点", "edge set --mode domains"},
 		{"Use default Cloudflare endpoints", "使用默认 Cloudflare 入口", "edge set --mode default"},
 	},
 	"formats": {
