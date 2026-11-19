@@ -9,7 +9,7 @@ Deploy and manage a single Linux sing-box server from a numbered terminal dashbo
 Use Debian 12+ or Ubuntu 22.04+, systemd, sudo/root and Linux amd64 or arm64. The VPS downloads the compiled CLI from GitHub Actions releases. It also needs outbound HTTPS to obtain the verified upstream core.
 
 ```sh
-VERSION=v0.1.0
+VERSION=v0.1.1
 BASE="https://github.com/howardshaw/singforge/releases/download/$VERSION"
 SETUP=$(mktemp -d)
 cd "$SETUP"

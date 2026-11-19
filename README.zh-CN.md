@@ -9,7 +9,7 @@
 准备 Debian 12+ 或 Ubuntu 22.04+、systemd、sudo/root 和 amd64 或 arm64。下面的命令在**新 VPS** 上运行，直接下载 GitHub Actions 构建的 CLI。安装核心还需能通过 HTTPS 访问上游发布站点。
 
 ```sh
-VERSION=v0.1.0
+VERSION=v0.1.1
 BASE="https://github.com/howardshaw/singforge/releases/download/$VERSION"
 SETUP=$(mktemp -d)
 cd "$SETUP"
