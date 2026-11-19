@@ -375,6 +375,12 @@ func (m Manager) Apply(s model.State) error {
 			return fmt.Errorf("install nginx for HTTPS origin validation")
 		}
 		test := bytes.ReplaceAll(d, []byte("/run/credentials/"+edgeUnit+"/"), []byte(""))
+		// nginx -t also tries to bind each listener. An unprivileged workspace
+		// validates the HTTPS site on loopback; live validation uses the real port.
+		if !m.Live && os.Geteuid() != 0 {
+			test = bytes.ReplaceAll(test, []byte("listen 443 ssl;"), []byte("listen 127.0.0.1:14443 ssl;"))
+			test = bytes.ReplaceAll(test, []byte("listen [::]:443 ssl;"), []byte("listen [::1]:14443 ssl;"))
+		}
 		checkDir, e := os.MkdirTemp(m.Dir, ".nginx-")
 		if e != nil {
 			return e
