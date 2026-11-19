@@ -428,6 +428,14 @@ func (m dashboard) View() tea.View {
 			label = []string{m.t("Public HTTPS hostname", "公开订阅域名"), m.t("Certificate chain file", "证书链文件路径"), m.t("Private key file", "私钥文件路径")}[m.fieldIndex]
 		}
 		line(label)
+		if m.page == "publication-form" && m.fieldIndex > 0 {
+			for _, row := range strings.Split(ansi.Hardwrap(m.t("Default if blank: ", "留空使用：")+m.publicationPath(), w, false), "\n") {
+				line(row)
+			}
+			for _, row := range strings.Split(ansi.Hardwrap(m.t("Find paths on this server: sudo certbot certificates", "在服务器上查看证书路径：sudo certbot certificates"), w, false), "\n") {
+				line(row)
+			}
+		}
 		line(m.paint("36", "❯ "+m.entry+"▏"))
 		if m.problem != "" {
 			for _, r := range strings.Split(ansi.Hardwrap(m.problem, w, false), "\n") {

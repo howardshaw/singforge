@@ -12,6 +12,33 @@ import (
 	"github.com/howardshaw/singforge/internal/store"
 )
 
+func TestUpdateServiceProbeUsesQuietStatus(t *testing.T) {
+	dir := t.TempDir()
+	current := filepath.Join(dir, "current")
+	if err := os.Mkdir(current, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range []string{coreUnit, subUnit} {
+		if err := os.WriteFile(filepath.Join(current, unit), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := "#!/bin/sh\n[ \"$*\" = 'is-active --quiet " + coreUnit + " " + subUnit + "' ] && exit \"$PROBE_STATUS\"\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "systemctl"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	m := Manager{Live: true, Dir: dir}
+	t.Setenv("PROBE_STATUS", "0")
+	if err := m.Service("status"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PROBE_STATUS", "3")
+	if err := m.Service("status"); err == nil {
+		t.Fatal("lost systemctl failure")
+	}
+}
+
 func TestRejectedGenerationAndRecovery(t *testing.T) {
 	dir := t.TempDir()
 	core := filepath.Join(dir, "checker")

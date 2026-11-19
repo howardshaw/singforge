@@ -23,6 +23,9 @@ func TestReconcile(t *testing.T) {
 		if r.Method != "GET" {
 			writes++
 			var v Record
+			if r.Method == "PATCH" {
+				v = current[0]
+			}
 			if e := json.NewDecoder(r.Body).Decode(&v); e != nil {
 				t.Error(e)
 			}
@@ -66,6 +69,8 @@ func TestTunnelAndErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			fmt.Fprint(w, `{"success":true,"result":{"id":"tunnel","name":"edge"}}`)
+		} else if strings.HasSuffix(r.URL.Path, "/cfd_tunnel") {
+			fmt.Fprint(w, `{"success":true,"result":[]}`)
 		} else {
 			http.Error(w, "sensitive response", http.StatusForbidden)
 		}
@@ -79,5 +84,76 @@ func TestTunnelAndErrors(t *testing.T) {
 	_, e = c.Zone("example.org")
 	if e == nil || strings.Contains(e.Error(), "sensitive") {
 		t.Fatal("error redaction")
+	}
+}
+
+func TestDNSWriteConflictIsReadBack(t *testing.T) {
+	z := Zone{ID: strings.Repeat("a", 32), Name: "example.org"}
+	want := Record{Type: "A", Name: "sub.example.org", Content: "192.0.2.2"}
+	id := strings.Repeat("b", 32)
+	for _, method := range []string{"POST", "PATCH"} {
+		for _, converged := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/converged=%t", method, converged), func(t *testing.T) {
+				reads, writes := 0, 0
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == "GET" {
+						reads++
+						var records []Record
+						if method == "PATCH" || writes > 0 {
+							record := want
+							record.ID = id
+							if writes == 0 || !converged {
+								record.Content = "192.0.2.1"
+							}
+							records = []Record{record}
+						}
+						json.NewEncoder(w).Encode(map[string]any{"success": true, "result": records})
+						return
+					}
+					if r.Method != method {
+						t.Errorf("unexpected %s", r.Method)
+					}
+					if method == "PATCH" {
+						var fields map[string]any
+						if err := json.NewDecoder(r.Body).Decode(&fields); err != nil || len(fields) != 1 || fields["content"] != want.Content {
+							t.Errorf("unexpected patch: %v", fields)
+						}
+					}
+					writes++
+					http.Error(w, "private upstream error", http.StatusConflict)
+				}))
+				defer srv.Close()
+				c := Client{srv.URL, "token", srv.Client()}
+				owned := ""
+				if method == "PATCH" {
+					owned = id
+				}
+				got, err := c.Sync(z, want, owned, "", false)
+				if (err == nil) != converged || reads != 2 || writes != 1 || (converged && got != owned) {
+					t.Fatalf("got %q, %v; reads=%d writes=%d", got, err, reads, writes)
+				}
+			})
+		}
+	}
+}
+
+func TestTunnelCreateRaceDoesNotAdoptOtherCredentials(t *testing.T) {
+	var methods []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		switch {
+		case r.Method == "POST":
+			http.Error(w, "untrusted response", http.StatusConflict)
+		case len(methods) == 1:
+			fmt.Fprint(w, `{"success":true,"result":[]}`)
+		default:
+			fmt.Fprint(w, `{"success":true,"result":[{"name":"edge","id":"other-id"}]}`)
+		}
+	}))
+	defer srv.Close()
+	c := Client{srv.URL, "token", srv.Client()}
+	tunnel, err := c.Create(strings.Repeat("a", 32), "edge", "secret")
+	if tunnel.ID != "" || err == nil || !strings.Contains(err.Error(), "other-id") || strings.Join(methods, ",") != "GET,POST,GET" {
+		t.Fatal(tunnel, err, methods)
 	}
 }

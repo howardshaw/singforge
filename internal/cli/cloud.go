@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -56,7 +57,8 @@ func cloudCommand(cmd string, s *model.State, m host.Manager, o opts) (bool, boo
 			return true, false, fmt.Errorf("a tunnel is already configured")
 		}
 		if o.dry {
-			return true, false, nil
+			_, err := c.CheckTunnel(s.AccountID, o.get("name"), "")
+			return true, false, err
 		}
 		secret := base64.StdEncoding.EncodeToString(model.Random(32))
 		t, e := c.Create(s.AccountID, o.get("name"), secret)
@@ -114,64 +116,80 @@ func cloudCommand(cmd string, s *model.State, m host.Manager, o opts) (bool, boo
 		}
 		return true, false, e
 	case "cloudflare dns sync", "domain sync":
-		var wanted []cloudflare.Record
-		for _, h := range []string{s.Direct, s.CDN, s.PublishHost} {
-			if !model.Domain(h) {
-				continue
-			}
-			for _, a := range strings.Split(o.get("address"), ",") {
-				ip := net.ParseIP(a)
-				if ip == nil {
-					return true, false, fmt.Errorf("provide --address IPv4[,IPv6]")
-				}
-				typ := "AAAA"
-				if ip.To4() != nil {
-					typ = "A"
-				}
-				wanted = append(wanted, cloudflare.Record{Type: typ, Name: h, Content: ip.String(), Proxied: h == s.CDN})
-			}
-		}
-		if s.Tunnel != "" {
-			wanted = append(wanted, cloudflare.Record{Type: "CNAME", Name: s.Tunnel, Content: s.TunnelID + ".cfargotunnel.com", Proxied: true})
-		}
-		ledger := filepath.Join(m.Dir, "dns-owned.json")
-		owned := map[string]string{}
-		b, e := os.ReadFile(ledger)
-		if e == nil {
-			if e = json.Unmarshal(b, &owned); e != nil {
-				return true, false, e
-			}
-		} else if !os.IsNotExist(e) {
-			return true, false, e
-		}
-		z := cloudflare.Zone{ID: s.ZoneID, Name: s.Zone}
-		for _, plan := range []bool{true, false} {
-			if !plan && o.dry {
-				break
-			}
-			for _, r := range wanted {
-				k := z.ID + "/" + r.Name + "/" + r.Type
-				id, e := c.Sync(z, r, owned[k], o.get("replace-id"), plan)
-				if e != nil {
-					return true, false, e
-				}
-				if !plan && id != "" {
-					owned[k] = id
-					b, e = json.Marshal(owned)
-					if e == nil {
-						e = store.Write(ledger, b, 0600)
-					}
-					if e != nil {
-						return true, false, e
-					}
-				}
-			}
-		}
-		if o.quiet {
-			return true, false, nil
-		}
-		return true, false, printJSON(wanted)
+		return true, false, syncCloudDNS(c, *s, m.Dir, o)
 	default:
 		return false, false, nil
 	}
+}
+
+func syncCloudDNS(c cloudflare.Client, s model.State, dir string, o opts) error {
+	var wanted []cloudflare.Record
+	for _, h := range []string{s.Direct, s.CDN, s.PublishHost} {
+		if !model.Domain(h) {
+			continue
+		}
+		for _, a := range strings.Split(o.get("address"), ",") {
+			ip := net.ParseIP(a)
+			if ip == nil {
+				return fmt.Errorf("provide --address IPv4[,IPv6]")
+			}
+			typ := "AAAA"
+			if ip.To4() != nil {
+				typ = "A"
+			}
+			wanted = append(wanted, cloudflare.Record{Type: typ, Name: h, Content: ip.String(), Proxied: h == s.CDN})
+		}
+	}
+	if s.Tunnel != "" {
+		target := ""
+		if s.TunnelID != "" {
+			target = s.TunnelID + ".cfargotunnel.com"
+		}
+		wanted = append(wanted, cloudflare.Record{Type: "CNAME", Name: s.Tunnel, Content: target, Proxied: true})
+	}
+	ledger := filepath.Join(dir, "dns-owned.json")
+	owned := map[string]string{}
+	b, e := os.ReadFile(ledger)
+	if e == nil {
+		if e = json.Unmarshal(b, &owned); e != nil {
+			return e
+		}
+	} else if !os.IsNotExist(e) {
+		return e
+	}
+	z := cloudflare.Zone{ID: s.ZoneID, Name: s.Zone}
+	for _, plan := range []bool{true, false} {
+		if !plan && o.dry {
+			break
+		}
+		var conflicts []error
+		for _, r := range wanted {
+			k := z.ID + "/" + r.Name + "/" + r.Type
+			id, e := c.Sync(z, r, owned[k], o.get("replace-id"), plan)
+			if e != nil {
+				if !plan {
+					return e
+				}
+				conflicts = append(conflicts, fmt.Errorf("%s %s: %w", r.Type, r.Name, e))
+				continue
+			}
+			if !plan && id != "" {
+				owned[k] = id
+				b, e = json.Marshal(owned)
+				if e == nil {
+					e = store.Write(ledger, b, 0600)
+				}
+				if e != nil {
+					return e
+				}
+			}
+		}
+		if len(conflicts) > 0 {
+			return errors.Join(conflicts...)
+		}
+	}
+	if o.quiet {
+		return nil
+	}
+	return printJSON(wanted)
 }

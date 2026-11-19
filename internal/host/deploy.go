@@ -483,6 +483,7 @@ func (m Manager) Service(action string) error {
 		}
 		if action == "status" {
 			action = "is-active"
+			args = append([]string{"--quiet"}, args...)
 		}
 		cmd = exec.Command("systemctl", append([]string{action}, args...)...)
 	}

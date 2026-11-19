@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/howardshaw/singforge/internal/host"
+	"github.com/howardshaw/singforge/internal/model"
 	"github.com/skip2/go-qrcode"
 )
 
@@ -54,6 +57,16 @@ type menuLocation struct {
 	page, title string
 	cursor      int
 }
+
+// Certbot's certificate name matches the publication hostname for provisioned hosts.
+func (m dashboard) publicationPath() string {
+	file := "fullchain.pem"
+	if m.fieldIndex == 2 {
+		file = "privkey.pem"
+	}
+	return filepath.Join(host.Lineage(m.fields[0]), file)
+}
+
 type menuTools struct {
 	trail                   []menuLocation
 	pending                 []string
@@ -263,6 +276,23 @@ func (m *dashboard) inputTool(key, text string) (tea.Cmd, bool) {
 			}
 		case "enter":
 			p := strings.TrimSpace(m.entry)
+			if m.page == "publication-form" {
+				if m.fieldIndex == 0 && !model.Domain(p) {
+					m.problem = m.t("Enter the subscription hostname, e.g. sub.example.org.", "请输入订阅域名，例如 sub.example.org。")
+					break
+				}
+				if m.fieldIndex > 0 {
+					if p == "" {
+						p = m.publicationPath()
+					}
+					if info, err := os.Stat(p); err != nil || !info.Mode().IsRegular() {
+						m.problem = m.t("File unavailable. Enter an existing file path on this server.", "找不到文件，请输入此服务器上已有文件的路径。")
+						break
+					}
+				} else if p != m.fields[0] {
+					clear(m.fields[1:])
+				}
+			}
 			if p == "" {
 				m.problem = m.t("Enter a value.", "请输入值。")
 				break

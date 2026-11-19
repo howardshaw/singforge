@@ -130,7 +130,9 @@ func (m Manager) SelfUpdate(file, want string, rollback, dry bool) error {
 		return e
 	}
 	if e = probe(path); e == nil {
-		e = m.Service("status")
+		if err := m.Service("status"); err != nil {
+			e = fmt.Errorf("post-replacement systemd check failed: %w", err)
+		}
 	}
 	if e != nil {
 		return errors.Join(e, store.Write(path, old, 0755))

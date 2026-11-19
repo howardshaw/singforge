@@ -74,3 +74,31 @@ func TestRenewalFormUsesINIPathOnly(t *testing.T) {
 		t.Fatal(m.pending)
 	}
 }
+
+func TestPublicationFormShowsCertbotPathsAndAcceptsCustomFiles(t *testing.T) {
+	m := dashboard{page: "subscriptions", width: 100, height: 24}
+	m.acceptTool(choice{action: "publish"})
+	m.entry = "sub.example.test"
+	m.inputTool("enter", "")
+	dir := t.TempDir()
+	for _, file := range []string{"fullchain.pem", "privkey.pem"} {
+		view := m.View().Content
+		if !strings.Contains(view, "/etc/letsencrypt/live/sub.example.test/"+file) || !strings.Contains(view, "sudo certbot certificates") {
+			t.Fatal(view)
+		}
+		p := filepath.Join(dir, file)
+		m.entry = p
+		index := m.fieldIndex
+		m.inputTool("enter", "")
+		if m.problem == "" || m.fieldIndex != index {
+			t.Fatal("accepted missing file")
+		}
+		if err := os.WriteFile(p, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		m.inputTool("enter", "")
+	}
+	if m.page != "tool-confirm" || strings.Join(m.pending, " ") != "subscription publish --host sub.example.test --cert "+filepath.Join(dir, "fullchain.pem")+" --key "+filepath.Join(dir, "privkey.pem") {
+		t.Fatal(m.pending)
+	}
+}

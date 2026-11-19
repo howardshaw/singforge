@@ -9,11 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/howardshaw/singforge/internal/cloudflare"
 	"github.com/howardshaw/singforge/internal/edge"
 	"github.com/howardshaw/singforge/internal/host"
 	"github.com/howardshaw/singforge/internal/model"
+	"github.com/howardshaw/singforge/internal/store"
 )
 
 // Report only operator-facing stage names. Keep stdout available for the JSON plan.
@@ -99,11 +102,15 @@ func (op operation) provision() error {
 	if c.Publish {
 		plan["subscription"] = c.hostname("sub")
 	}
-	if op.options.dry {
+	if op.options.dry && !op.manager.Live {
 		return printJSON(plan)
 	}
 	progress := op.manager.Progress
+	if progress == nil {
+		progress = func(string) {}
+	}
 	progress("Checking provision prerequisites")
+	var token []byte
 	if c.Domain != "" {
 		if !op.manager.Live {
 			return errors.New("cloud provisioning requires live mode")
@@ -111,6 +118,18 @@ func (op operation) provision() error {
 		if err = host.ValidateCredentialFile(c.TokenFile); err != nil {
 			return err
 		}
+		token, err = os.ReadFile(c.TokenFile)
+		if err != nil {
+			return err
+		}
+		progress("Checking Cloudflare zone, tunnel and DNS records")
+		client := cloudflare.New(strings.TrimSpace(string(token)))
+		if err = checkProvisionCloud(client, c, &s, op.manager.Dir); err != nil {
+			return err
+		}
+	}
+	if op.options.dry {
+		return printJSON(plan)
 	}
 	if c.Publish {
 		if err = host.ValidateDNSCredentials(c.CertFile); err != nil {
@@ -147,7 +166,7 @@ func (op operation) provision() error {
 		}
 		return nil
 	}
-	if err = cloud("cloudflare configure", args(map[string]string{"domain": c.Domain, "token-file": c.TokenFile})); err != nil {
+	if err = store.Write(filepath.Join(op.manager.Dir, "cloudflare.token"), token, 0600); err != nil {
 		return err
 	}
 	syncDNS := func() error { return cloud("cloudflare dns sync", args(map[string]string{"address": c.IP})) }
@@ -155,27 +174,13 @@ func (op operation) provision() error {
 		return err
 	}
 	if c.Tunnel {
-		o := args(nil)
 		if s.TunnelCredentials == "" && s.ConnectorToken == "" {
-			ledger := filepath.Join(op.manager.Dir, "created-tunnel.json")
-			data, readErr := os.ReadFile(ledger)
-			switch {
-			case os.IsNotExist(readErr):
-				if err = cloud("cloudflare tunnel create", args(map[string]string{"name": c.hostname("edge")})); err != nil {
-					return err
-				}
-			case readErr != nil:
-				return readErr
-			default:
-				var saved struct{ AccountTag string }
-				if json.Unmarshal(data, &saved) != nil || saved.AccountTag != s.AccountID {
-					return errors.New("saved tunnel belongs to a different account")
-				}
-				o = args(map[string]string{"credentials": ledger})
+			if err = cloud("cloudflare tunnel create", args(map[string]string{"name": c.hostname("edge")})); err != nil {
+				return err
 			}
 		}
 		progress("Configuring tunnel endpoints")
-		if err = Edge(&s, "tunnel", c.hostname("edge"), o); err != nil {
+		if err = Edge(&s, "tunnel", c.hostname("edge"), args(nil)); err != nil {
 			return err
 		}
 		s.PreferredEdge = model.EdgePreferences{Mode: "all", Addresses: append(append([]string{}, edge.Community...), edge.DefaultIPs...)}
@@ -212,4 +217,67 @@ func (op operation) provision() error {
 		}
 	}
 	return printJSON(plan)
+}
+
+// Check every enabled hostname before applying endpoints or issuing DNS writes.
+func checkProvisionCloud(client cloudflare.Client, c provisionConfig, s *model.State, dir string) error {
+	z, err := client.Zone(c.Domain)
+	if err != nil {
+		return err
+	}
+	if (s.ZoneID != "" && s.ZoneID != z.ID) || (s.AccountID != "" && s.AccountID != z.Account.ID) {
+		return errors.New("configured Cloudflare zone or account differs from this installation")
+	}
+	s.Zone, s.ZoneID, s.AccountID = z.Name, z.ID, z.Account.ID
+	var tunnelErr error
+	target := *s
+	if c.Tunnel {
+		if err := loadProvisionTunnel(s, dir); err != nil {
+			return err
+		}
+		target.Tunnel = c.hostname("edge")
+		target.TunnelID, tunnelErr = client.CheckTunnel(s.AccountID, target.Tunnel, s.TunnelID)
+	}
+	if c.Publish {
+		target.PublishHost = c.hostname("sub")
+	}
+	dnsErr := syncCloudDNS(client, target, dir, opts{dry: true, quiet: true, str: map[string]*string{"address": &c.IP}})
+	return errors.Join(tunnelErr, dnsErr)
+}
+
+func loadProvisionTunnel(s *model.State, dir string) error {
+	if s.ConnectorToken != "" {
+		id, err := host.ConnectorID(s.ConnectorToken)
+		if err != nil {
+			return err
+		}
+		if s.TunnelID != "" && s.TunnelID != id {
+			return errors.New("connector token differs from configured tunnel ID")
+		}
+		s.TunnelID = id
+		return nil
+	}
+	if s.TunnelCredentials == "" {
+		data, err := os.ReadFile(filepath.Join(dir, "created-tunnel.json"))
+		if os.IsNotExist(err) && s.TunnelID == "" {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		s.TunnelCredentials = string(data)
+	}
+	var saved struct{ AccountTag string }
+	if json.Unmarshal([]byte(s.TunnelCredentials), &saved) != nil || saved.AccountTag != s.AccountID {
+		return errors.New("saved tunnel belongs to a different account or has invalid credentials")
+	}
+	id, err := host.TunnelID(s.TunnelCredentials)
+	if err != nil {
+		return err
+	}
+	if s.TunnelID != "" && s.TunnelID != id {
+		return errors.New("saved credentials differ from configured tunnel ID")
+	}
+	s.TunnelID = id
+	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/howardshaw/singforge/internal/host"
+	"github.com/howardshaw/singforge/internal/model"
 	"github.com/howardshaw/singforge/internal/routing"
 	"github.com/howardshaw/singforge/internal/store"
 )
@@ -43,10 +44,7 @@ func (op operation) coreUpdate() error {
 	if e = m.StageCore(&s, asset.File, asset.Digest, o.dry); e != nil {
 		return e
 	}
-	if e != nil {
-		return e
-	}
-	return op.commit(s, "")
+	return op.applyComponent(s, "sing-box", asset)
 }
 func (op operation) coreRollback() error {
 	o := op.options
@@ -65,7 +63,10 @@ func (op operation) selfUpdate() error {
 		return fmt.Errorf("confirm with --yes")
 	}
 	if cmd == "self rollback" {
-		return m.SelfUpdate("", "", true, o.dry)
+		if e := m.SelfUpdate("", "", true, o.dry); e != nil || o.dry {
+			return e
+		}
+		return op.reportUpdates([]componentUpdate{{"singforge", "previous"}})
 	}
 	dir, e := os.MkdirTemp(m.Dir, ".update-")
 	if e != nil {
@@ -76,7 +77,10 @@ func (op operation) selfUpdate() error {
 	if e != nil {
 		return e
 	}
-	return m.SelfUpdate(a.File, a.Digest, false, o.dry)
+	if e = m.SelfUpdate(a.File, a.Digest, false, o.dry); e != nil || o.dry {
+		return e
+	}
+	return op.reportUpdates([]componentUpdate{releaseUpdate("singforge", a)})
 }
 func (op operation) backupCreate() error {
 	o := op.options
@@ -130,7 +134,7 @@ func (op operation) cloudflaredUpdate() error {
 	if e := op.manager.StageConnector(&s, asset.File, asset.Digest, o.dry); e != nil {
 		return e
 	}
-	return op.commit(s, "")
+	return op.applyComponent(s, "cloudflared", asset)
 }
 func (op operation) cloudflaredRollback() error {
 	s := op.state
@@ -139,6 +143,44 @@ func (op operation) cloudflaredRollback() error {
 	}
 	s.CloudDigest, s.PreviousCloudDigest = s.PreviousCloudDigest, s.CloudDigest
 	return op.commit(s, "")
+}
+
+type componentUpdate struct {
+	Component string `json:"component"`
+	Revision  string `json:"revision"`
+}
+
+func releaseUpdate(component string, asset host.Release) componentUpdate {
+	revision := asset.Tag
+	if revision == "" {
+		revision = "sha256:" + asset.Digest
+	}
+	return componentUpdate{component, revision}
+}
+
+func (op operation) applyComponent(s model.State, name string, asset host.Release) error {
+	if op.options.dry {
+		return op.commit(s, "")
+	}
+	if err := op.manager.Apply(s); err != nil {
+		return err
+	}
+	return op.reportUpdates([]componentUpdate{releaseUpdate(name, asset)})
+}
+
+func (op operation) reportUpdates(components []componentUpdate) error {
+	if op.options.json {
+		return printJSON(map[string]any{"applied": true, "issued_url": "", "components": components})
+	}
+	if chinese() {
+		fmt.Println("已应用的组件版本")
+	} else {
+		fmt.Println("Applied component revisions")
+	}
+	for _, c := range components {
+		fmt.Printf("%s  %s\n", c.Component, c.Revision)
+	}
+	return nil
 }
 
 func (op operation) release(dir, component string) (host.Release, error) {
@@ -177,16 +219,18 @@ func (op operation) updateAll() error {
 	}
 	defer os.RemoveAll(dir)
 	assets := map[string]host.Release{}
+	var updates []componentUpdate
 	for _, c := range components {
 		assets[c], e = host.FetchRelease(dir, c)
 		if e != nil {
-			return e
+			return fmt.Errorf("fetch %s: %w", c, e)
 		}
+		updates = append(updates, releaseUpdate(c, assets[c]))
 	}
 	s := op.state
 	snap, e := routing.Update()
 	if e != nil {
-		return e
+		return fmt.Errorf("update routing rules: %w", e)
 	}
 	if s.Rules.Version != snap.Version {
 		s.PreviousRules = s.Rules
@@ -208,8 +252,7 @@ func (op operation) updateAll() error {
 	if e = op.manager.SelfUpdate(cli.File, cli.Digest, false, false); e != nil {
 		return errors.Join(e, op.manager.Apply(op.state))
 	}
-	fmt.Println("updated")
-	return nil
+	return op.reportUpdates(append(updates, componentUpdate{"rules", snap.Version}))
 }
 
 func (op operation) firewallSync() error {
