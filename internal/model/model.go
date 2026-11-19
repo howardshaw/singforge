@@ -64,6 +64,7 @@ type Grant struct {
 	Expires time.Time
 }
 type State struct {
+	MihomoNodeDNS                                                                            string `json:",omitempty"`
 	MihomoIPv6                                                                               string `json:",omitempty"`
 	MihomoPolicy                                                                             string `json:",omitempty"`
 	AutoRenew                                                                                bool   `json:",omitempty"`
@@ -274,6 +275,9 @@ func (s State) Validate() error {
 	}
 	if !slices.Contains([]string{"", "on", "off"}, s.MihomoIPv6) {
 		return fmt.Errorf("unknown Mihomo IPv6 setting")
+	}
+	if !slices.Contains([]string{"", "default", "alidns"}, s.MihomoNodeDNS) {
+		return fmt.Errorf("unknown Mihomo node DNS setting")
 	}
 	if !slices.Contains([]string{"", "strict", "split"}, s.MihomoPolicy) {
 		return fmt.Errorf("unknown Mihomo DNS policy")

@@ -28,7 +28,7 @@ Generated from Cobra. Append `--help` to any command for flag types and defaults
 | `singforge cloudflare tunnel list` | Discover tunnels in the configured account |  |
 | `singforge cloudflare tunnel routes` | Show the required public hostname, path patterns and origins |  |
 | `singforge cloudflare tunnel status` | Inspect tunnel connection status |  |
-| `singforge dns set` | Change client DNS profile or encrypted resolver | `--capture`, `--family`, `--mihomo-ipv`, `--mihomo-policy`, `--profile`, `--resolver`, `--server-family`, `--transport` |
+| `singforge dns set` | Change client DNS profile or encrypted resolver | `--capture`, `--family`, `--mihomo-ipv`, `--mihomo-node-dns`, `--mihomo-policy`, `--profile`, `--resolver`, `--server-family`, `--transport` |
 | `singforge dns show` | Inspect client DNS settings |  |
 | `singforge dns test` | Query a running local client DNS listener | `--host`, `--port` |
 | `singforge domain configure` | Set a DNS-only direct hostname | `--domain`, `--hostname`, `--mode` |

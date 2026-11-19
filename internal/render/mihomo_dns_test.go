@@ -550,3 +550,50 @@ func TestSmartGeoRulesFollowServices(t *testing.T) {
 		t.Fatal("native geographic rules are not remotely cached")
 	}
 }
+
+func TestNodeDNSOnlyForExportedHostnames(t *testing.T) {
+	s, _ := model.New("fast.example.org")
+	for _, id := range []string{"ss", "reality", "hysteria2"} {
+		a, e := s.Enable(id)
+		if e != nil {
+			t.Fatal(e)
+		}
+		host := map[string]string{"ss": "fast.example.org", "reality": "edge.example.org", "hysteria2": "192.0.2.1"}[id]
+		if e = s.Add(id, "direct", host, a.Port); e != nil {
+			t.Fatal(e)
+		}
+	}
+	for _, c := range []struct {
+		setting, filter string
+		count           int
+	}{{"", "", 0}, {"alidns", "", 2}, {"alidns", "direct-ss", 1}, {"alidns", "direct-hysteria2", 0}} {
+		s.MihomoNodeDNS = c.setting
+		data, _, e := Export(*s, "mihomo", c.filter)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var cfg struct {
+			DNS struct {
+				Policy    map[string][]string `yaml:"proxy-server-nameserver-policy"`
+				Main      []string            `yaml:"nameserver"`
+				Bootstrap []string            `yaml:"proxy-server-nameserver"`
+			}
+		}
+		if e = yaml.Unmarshal(data, &cfg); e != nil {
+			t.Fatal(e)
+		}
+		if len(cfg.DNS.Policy) != c.count {
+			t.Fatal(c)
+		}
+		for k, v := range cfg.DNS.Policy {
+			if (k != "fast.example.org" && k != "edge.example.org") || !slices.Equal(v, []string{"https://223.5.5.5/dns-query#DIRECT", "https://223.6.6.6/dns-query#DIRECT"}) {
+				t.Fatal(k, v)
+			}
+		}
+		for _, u := range append(cfg.DNS.Main, cfg.DNS.Bootstrap...) {
+			if strings.Contains(u, "223.") {
+				t.Fatal("resolver escaped node policy")
+			}
+		}
+	}
+}

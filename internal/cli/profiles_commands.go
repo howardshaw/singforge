@@ -16,6 +16,9 @@ import (
 func (op operation) dnsSet() error {
 	o := op.options
 	s := op.state
+	if v := o.get("mihomo-node-dns"); v != "" {
+		s.MihomoNodeDNS = v
+	}
 	if v := o.get("mihomo-ipv6"); v != "" {
 		s.MihomoIPv6 = v
 	}
@@ -48,7 +51,11 @@ func (op operation) dnsShow() error {
 	if mode == "" {
 		mode = "strict"
 	}
-	return printJSON(map[string]string{"mihomo_policy": mode, "mihomo_ipv6": s.MihomoIPv6, "profile": s.DNS, "resolver": s.Resolver, "transport": s.DNSTransport, "capture": s.Capture, "family": s.DNSFamily})
+	nodeDNS := s.MihomoNodeDNS
+	if nodeDNS == "" {
+		nodeDNS = "default"
+	}
+	return printJSON(map[string]string{"mihomo_node_dns": nodeDNS, "mihomo_policy": mode, "mihomo_ipv6": s.MihomoIPv6, "profile": s.DNS, "resolver": s.Resolver, "transport": s.DNSTransport, "capture": s.Capture, "family": s.DNSFamily})
 }
 func (op operation) rulesList() error {
 	s := op.state

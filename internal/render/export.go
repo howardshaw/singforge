@@ -297,7 +297,11 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 			if s.Capture != "system" {
 				cfg["tun"] = M{"enable": true, "stack": "mixed", "auto-route": true, "auto-detect-interface": true, "strict-route": true, "dns-hijack": []string{"any:53", "tcp://any:53"}}
 			}
-			cfg["dns"] = mihomoDNS(s, pol, ipv6)
+			dns := mihomoDNS(s, pol, ipv6)
+			if s.MihomoNodeDNS == "alidns" {
+				addNodeDNS(dns, nodes, family, s.DNSTransport)
+			}
+			cfg["dns"] = dns
 		}
 		b, e := yaml.Marshal(cfg)
 		return b, warnings, e

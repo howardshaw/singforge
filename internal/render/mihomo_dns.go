@@ -148,3 +148,24 @@ func orderedMihomoTags(nodes []model.Node) []string {
 	}
 	return tags
 }
+
+// Restrict the opt-in resolver to the actual dial hosts of this export.
+func addNodeDNS(dns M, nodes []model.Node, family, transport string) {
+	addresses := []string{"223.5.5.5", "223.6.6.6"}
+	if family == "ipv6" {
+		addresses = []string{"2400:3200::1", "2400:3200:baba::1"}
+	}
+	var resolvers []string
+	for _, addr := range addresses {
+		resolvers = append(resolvers, encryptedURL(transport, addr)+"#DIRECT")
+	}
+	policy := M{}
+	for _, n := range nodes {
+		if net.ParseIP(n.Host) == nil {
+			policy[n.Host] = resolvers
+		}
+	}
+	if len(policy) > 0 {
+		dns["proxy-server-nameserver-policy"] = policy
+	}
+}
