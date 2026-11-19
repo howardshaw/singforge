@@ -15,7 +15,7 @@ Read AGENTS.md. Install the latest stable SingForge release on <SSH host> using 
 Use Debian 12+ or Ubuntu 22.04+, systemd, sudo/root and Linux amd64 or arm64. The VPS downloads the compiled CLI from GitHub Actions releases. It also needs outbound HTTPS to obtain the verified upstream core.
 
 ```sh
-VERSION=v0.1.1
+VERSION=v0.1.2
 BASE="https://github.com/howardshaw/singforge/releases/download/$VERSION"
 SETUP=$(mktemp -d)
 cd "$SETUP"
@@ -135,7 +135,7 @@ sudo singforge doctor
 sudo singforge
 ```
 
-The preview shows local intent. Apply checks DNS conflicts, registers the connector, obtains a DNS-01 certificate and configures renewal for the enabled features. Rerun the same file after an interruption. Existing credentials and subscription grants are retained.
+The preview shows the local plan. During apply, stderr shows the current stage and repeats it every 10 seconds with elapsed time. The final JSON plan goes to stdout. Apply checks DNS conflicts, registers the connector, obtains a DNS-01 certificate and configures renewal for the enabled features. Rerun the same file after an interruption. Existing credentials and subscription grants are retained.
 
 For a private file export use `sudo singforge subscription show --format mihomo --output client.yaml`. For a published URL use `sudo singforge subscription issue --format mihomo` and save the URL privately when displayed. Import it in Clash Verge and test individual nodes under **Main**. The dashboard supports arrows or a number followed by Enter, and 0 to select Exit on the main menu.
 

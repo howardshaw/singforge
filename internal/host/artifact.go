@@ -24,7 +24,50 @@ var hashes = map[string]map[string]string{"sing-box": {"amd64": "699a1b510aa4396
 
 var rawCores = map[string]string{"amd64": "1264361b5f8868c8768f7555d3e77e20118bf503c41ac08bb290a0d99056aa3a", "arm64": "d953af885f11d6b547c21a3c0ffe70796963afc802fab959d548311002b4908a"}
 
-func Artifact(name string) (string, error) {
+const maxArtifactSize = 200 << 20
+
+func copyArtifact(dst io.Writer, src io.Reader) (string, error) {
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(dst, h), io.LimitReader(src, maxArtifactSize+1))
+	if err != nil {
+		return "", err
+	}
+	if n > maxArtifactSize {
+		return "", fmt.Errorf("artifact exceeds %d MiB", maxArtifactSize>>20)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func copyVerified(dst io.Writer, src io.Reader, want string) error {
+	if !digest.MatchString(want) {
+		return fmt.Errorf("provide a trusted lowercase SHA-256 digest")
+	}
+	got, err := copyArtifact(dst, src)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("artifact SHA-256 mismatch")
+	}
+	return nil
+}
+
+func verifyFile(path, want string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return copyVerified(io.Discard, f, want)
+}
+
+func writeVerified(path string, src io.Reader, want string) error {
+	return store.WriteAtomic(path, 0755, func(dst io.Writer) error {
+		return copyVerified(dst, src, want)
+	})
+}
+
+func (m Manager) artifact(name string) (string, error) {
 	arch := runtime.GOARCH
 	want := hashes[name][arch]
 	if want == "" {
@@ -36,8 +79,8 @@ func Artifact(name string) (string, error) {
 		raw = rawCores[arch]
 	}
 	if _, e := os.Stat(target); e == nil {
-		_, e = verified(target, raw)
-		return target, e
+		m.report("Verifying cached " + name)
+		return target, verifyFile(target, raw)
 	} else if !errors.Is(e, os.ErrNotExist) {
 		return "", e
 	}
@@ -46,6 +89,7 @@ func Artifact(name string) (string, error) {
 	if name == "cloudflared" {
 		u = "https://github.com/cloudflare/cloudflared/releases/download/2026.11.1/cloudflared-linux-" + arch
 	}
+	m.report("Downloading and verifying " + name)
 	client := http.Client{Timeout: 3 * time.Minute}
 	resp, e := client.Get(u)
 	if e != nil {
@@ -61,13 +105,10 @@ func Artifact(name string) (string, error) {
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
-	h := sha256.New()
-	if _, e = io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, 200<<20)); e != nil {
-		return "", e
+	if e = copyVerified(f, resp.Body, want); e != nil {
+		return "", fmt.Errorf("download %s: %w", name, e)
 	}
-	if hex.EncodeToString(h.Sum(nil)) != want {
-		return "", fmt.Errorf("%s digest mismatch", name)
-	}
+	m.report("Installing verified " + name + " executable")
 	if _, e = f.Seek(0, 0); e != nil {
 		return "", e
 	}
@@ -90,13 +131,5 @@ func Artifact(name string) (string, error) {
 			}
 		}
 	}
-	data, e := io.ReadAll(io.LimitReader(r, 200<<20))
-	if e != nil {
-		return "", e
-	}
-	hraw := sha256.Sum256(data)
-	if hex.EncodeToString(hraw[:]) != raw {
-		return "", fmt.Errorf("unpacked executable digest mismatch")
-	}
-	return target, store.Write(target, data, 0755)
+	return target, writeVerified(target, r, raw)
 }

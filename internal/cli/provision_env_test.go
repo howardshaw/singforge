@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 )
 
 func TestProvisionEnv(t *testing.T) {
@@ -16,4 +18,19 @@ func TestProvisionEnv(t *testing.T) {
 	if e != nil || c.hostname("edge") != "node2-edge.example.org" || c.SS != 8892 {
 		t.Fatal(e)
 	}
+}
+
+func TestProvisionProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var log strings.Builder
+		report, stop := provisionProgress(&log, 10*time.Second)
+		report("Downloading sing-box")
+		time.Sleep(11 * time.Second)
+		report("Checking service ports")
+		stop()
+		const want = "[provision] Downloading sing-box\n[provision] Downloading sing-box (10s elapsed)\n[provision] Checking service ports\n"
+		if got := log.String(); got != want {
+			t.Fatalf("progress = %q, want %q", got, want)
+		}
+	})
 }

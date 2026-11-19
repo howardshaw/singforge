@@ -21,6 +21,13 @@ import (
 type Manager struct {
 	Dir, Core string
 	Live      bool
+	Progress  func(string)
+}
+
+func (m Manager) report(stage string) {
+	if m.Progress != nil {
+		m.Progress(stage)
+	}
 }
 
 func run(name string, args ...string) error {
@@ -265,14 +272,17 @@ func (m Manager) reconcile(old string) error {
 		if e := run("systemctl", "reset-failed", n); e != nil {
 			return e
 		}
+		m.report("Restarting " + n)
 		if e := run("systemctl", "restart", n); e != nil {
 			return e
 		}
 	}
+	m.report("Waiting for systemd services and listeners")
 	if e := m.waitReady(enabled); e != nil {
 		return e
 	}
 	if slices.Contains(enabled, tunnelUnit) {
+		m.report("Waiting for Cloudflare Tunnel to connect")
 		client := http.Client{Timeout: time.Second}
 		for i := 0; i < 20; i++ {
 			r, e := client.Get("http://127.0.0.1:19782/ready")
@@ -297,6 +307,7 @@ func (m Manager) Recover() error {
 	if e != nil {
 		return e
 	}
+	m.report("Recovering the previous deployment")
 	if e = m.switchTo(string(b)); e != nil {
 		return e
 	}
@@ -315,6 +326,7 @@ func (m Manager) Apply(s model.State) error {
 		}
 	}
 	if m.Live {
+		m.report("Checking service ports")
 		if e := preflightPorts(s); e != nil {
 			return e
 		}
@@ -366,6 +378,7 @@ func (m Manager) Apply(s model.State) error {
 			return e
 		}
 	}
+	m.report("Validating service configuration")
 	if e = run(core, "check", "-c", filepath.Join(gen, "server.json")); e != nil {
 		return fmt.Errorf("core rejected candidate: %w", e)
 	}

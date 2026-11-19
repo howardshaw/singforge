@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -74,13 +75,21 @@ func Sync(dir string) error {
 	return d.Sync()
 }
 func Write(path string, data []byte, mode os.FileMode) error {
+	return WriteAtomic(path, mode, func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
+	})
+}
+
+// WriteAtomic publishes the temporary file only after write has succeeded.
+func WriteAtomic(path string, mode os.FileMode, write func(io.Writer) error) error {
 	dir := filepath.Dir(path)
 	f, e := os.CreateTemp(dir, ".pending-")
 	if e != nil {
 		return e
 	}
 	defer os.Remove(f.Name())
-	if _, e = f.Write(data); e == nil {
+	if e = write(f); e == nil {
 		e = f.Chmod(mode)
 	}
 	if e == nil {

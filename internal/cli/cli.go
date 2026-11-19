@@ -253,6 +253,12 @@ func execute(cmd string, o opts, handler func(operation) error) error {
 			return fmt.Errorf("pending transaction; run doctor to recover before preview")
 		}
 	}
+	if cmd == "provision" && !o.dry {
+		report, stop := provisionProgress(os.Stderr, 10*time.Second)
+		defer stop()
+		m.Progress = report
+		report("Checking deployment state")
+	}
 	if e = m.Recover(); e != nil {
 		return e
 	}

@@ -15,7 +15,7 @@
 准备 Debian 12+ 或 Ubuntu 22.04+、systemd、sudo/root 和 amd64 或 arm64。下面的命令在**新 VPS** 上运行，直接下载 GitHub Actions 构建的 CLI。安装核心还需能通过 HTTPS 访问上游发布站点。
 
 ```sh
-VERSION=v0.1.1
+VERSION=v0.1.2
 BASE="https://github.com/howardshaw/singforge/releases/download/$VERSION"
 SETUP=$(mktemp -d)
 cd "$SETUP"
@@ -135,7 +135,7 @@ sudo singforge doctor
 sudo singforge
 ```
 
-预览显示本地部署计划。执行后按所选功能检查 DNS 冲突、创建并启动 Tunnel、通过 DNS-01 签发证书并配置自动续签。中断后可使用同一文件重试，已有节点凭据和订阅授权会保留。
+预览显示本地部署计划。执行时，进度写入标准错误；同一步骤持续超过 10 秒时，每 10 秒显示一次已用时间。最终的 JSON 计划写入标准输出。执行后按所选功能检查 DNS 冲突、创建并启动 Tunnel、通过 DNS-01 签发证书并配置自动续签。中断后可使用同一文件重试，已有节点凭据和订阅授权会保留。
 
 离线导出使用 `sudo singforge subscription show --format mihomo --output client.yaml`。启用发布后，执行 `sudo singforge subscription issue --format mihomo` 并私下保存显示的 URL。在 Clash Verge 导入后可在 **Main** 中逐个测速、选节点。主菜单支持方向键或数字加 Enter，输入 0 可选中退出。
 

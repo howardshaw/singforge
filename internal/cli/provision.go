@@ -4,15 +4,46 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/howardshaw/singforge/internal/edge"
 	"github.com/howardshaw/singforge/internal/host"
 	"github.com/howardshaw/singforge/internal/model"
 )
+
+// Report only operator-facing stage names. Keep stdout available for the JSON plan.
+func provisionProgress(out io.Writer, interval time.Duration) (report func(string), stop func()) {
+	stages := make(chan string)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		var stage string
+		var since time.Time
+		for {
+			select {
+			case next, ok := <-stages:
+				if !ok {
+					return
+				}
+				stage, since = next, time.Now()
+				fmt.Fprintf(out, "[provision] %s\n", stage)
+				ticker.Reset(interval)
+			case <-ticker.C:
+				if stage != "" {
+					fmt.Fprintf(out, "[provision] %s (%s elapsed)\n", stage, time.Since(since).Round(time.Second))
+				}
+			}
+		}
+	}()
+	return func(s string) { stages <- s }, func() { close(stages); <-done }
+}
 
 // All milestones run under the same deployment lock. Persist the tunnel ID
 // before activation so a retry uses the existing remote resource.
@@ -71,6 +102,8 @@ func (op operation) provision() error {
 	if op.options.dry {
 		return printJSON(plan)
 	}
+	progress := op.manager.Progress
+	progress("Checking provision prerequisites")
 	if c.Domain != "" {
 		if !op.manager.Live {
 			return errors.New("cloud provisioning requires live mode")
@@ -89,6 +122,7 @@ func (op operation) provision() error {
 			}
 		}
 	}
+	progress("Applying direct endpoints")
 	if err = op.manager.Apply(s); err != nil {
 		return err
 	}
@@ -103,6 +137,7 @@ func (op operation) provision() error {
 		return o
 	}
 	cloud := func(cmd string, o opts) error {
+		progress(cmd)
 		_, persist, err := cloudCommand(cmd, &s, op.manager, o)
 		if err != nil {
 			return err
@@ -139,6 +174,7 @@ func (op operation) provision() error {
 				o = args(map[string]string{"credentials": ledger})
 			}
 		}
+		progress("Configuring tunnel endpoints")
 		if err = Edge(&s, "tunnel", c.hostname("edge"), o); err != nil {
 			return err
 		}
@@ -152,6 +188,7 @@ func (op operation) provision() error {
 	}
 	if c.Publish {
 		s.PublishHost = c.hostname("sub")
+		progress("Requesting HTTPS certificate (DNS-01 propagation may take 60s)")
 		if err = certbotRun("certonly", "--non-interactive", "--agree-tos", "--email", c.Email, "--keep-until-expiring", "--cert-name", s.PublishHost, "--dns-cloudflare", "--dns-cloudflare-credentials", c.CertFile, "--dns-cloudflare-propagation-seconds", "60", "-d", s.PublishHost); err != nil {
 			return err
 		}
@@ -169,6 +206,7 @@ func (op operation) provision() error {
 		op.state = s
 		op.path = "certificate auto-renew enable"
 		op.options = args(map[string]string{"credentials": c.CertFile})
+		progress("Enabling and checking certificate renewal")
 		if err = op.autoRenew(); err != nil {
 			return fmt.Errorf("enable renewal: %w", err)
 		}
