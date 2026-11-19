@@ -4,6 +4,12 @@
 
 [English](README.md) · [下载 Release](https://github.com/howardshaw/singforge/releases) · [命令索引](docs/cli.md) · [运维指南](docs/operations.md)
 
+## 交给 Agent 安装
+
+```text
+先读 AGENTS.md。通过 SSH 登录 <目标主机>，使用 <私有 .env 路径> 安装最新版稳定 SingForge，按配置开通域名、Tunnel 和 HTTPS 订阅。保留已有服务和授权，验证后私下返回 Clash/Mihomo、Shadowsocks 和 v2rayN 的订阅地址。
+```
+
 ## 在 VPS 安装正式版
 
 准备 Debian 12+ 或 Ubuntu 22.04+、systemd、sudo/root 和 amd64 或 arm64。下面的命令在**新 VPS** 上运行，直接下载 GitHub Actions 构建的 CLI。安装核心还需能通过 HTTPS 访问上游发布站点。

@@ -4,6 +4,12 @@ Deploy and manage a single Linux sing-box server from a numbered terminal dashbo
 
 [中文](README.zh-CN.md) · [Releases](https://github.com/howardshaw/singforge/releases) · [CLI](docs/cli.md) · [Operations](docs/operations.md)
 
+## Install with an agent
+
+```text
+Read AGENTS.md. Install the latest stable SingForge release on <SSH host> using <private .env path>, including its DNS, Tunnel and HTTPS subscription settings. Preserve existing services and grants. Verify the deployment and privately return working subscription URLs for Mihomo/Clash, Shadowsocks and v2rayN.
+```
+
 ## Install a release on the VPS
 
 Use Debian 12+ or Ubuntu 22.04+, systemd, sudo/root and Linux amd64 or arm64. The VPS downloads the compiled CLI from GitHub Actions releases. It also needs outbound HTTPS to obtain the verified upstream core.
