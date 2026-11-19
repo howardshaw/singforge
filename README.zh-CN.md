@@ -3,6 +3,30 @@
 SingForge 是单台 VPS 的 sing-box 部署和管理工具。Go CLI 使用 Cobra 解析命令、校验必填参数和生成帮助。systemd
 独立运行代理服务。直连模式只需 sing-box，CDN 模式增加专用 Nginx，具名隧道使用 cloudflared。
 
+## 安装前准备
+
+准备一台 Debian 12+ 或 Ubuntu 22.04+ 的 VPS，确认使用 systemd、有 SSH 和 sudo/root 权限，并记下公网 IP 和 CPU 架构（`uname -m`）。云平台使用 NAT 时，安装参数 `--host` 填公网地址。按你打算使用的入口准备以下资源：
+
+| 用途 | 域名和 DNS | VPS 和凭据 |
+|---|---|---|
+| 只用 IP 直连，私下导入客户端 | 公网 IPv4 或 IPv6 即可 | 放行所选协议的 TCP/UDP 端口。可以跳过域名购买和 Cloudflare 注册 |
+| 直连域名，例如 `fast.example.org` | A/AAAA 指向 VPS 公网地址。Cloudflare 上选 **DNS only** | 手动添加 DNS 记录即可；需要 CLI 自动同步时再创建管理 Token |
+| Cloudflare CDN，例如 `cdn.example.org` | Cloudflare 账户、已激活的 Zone、开启代理的 A/AAAA | Nginx、与域名匹配的源站证书和私钥、Cloudflare Full (strict)，以及可访问的 HTTPS 源站端口 |
+| Named Tunnel，例如 `edge.example.org` | 已激活的 Cloudflare Zone，代理 CNAME 指向 `<隧道 UUID>.cfargotunnel.com` | VPS 能出站连接 Cloudflare。本地管理用隧道凭据 JSON；控制台管理用 connector token |
+| 公开 HTTPS 订阅，例如 `sub.example.org` | 独立子域名指向 VPS，证书受客户端信任 | Nginx 和空闲的公网 TCP 443。若 Reality 已占用同地址 TCP 443，先规划新端口。Cloudflare DNS-01 自动续签另需专用 Token |
+
+**购买与托管域名。** 已有域名可直接使用。希望降低成本时，可以在 Spaceship 搜索 **6 至 9 位纯数字**的 `.xyz`，这一类属于注册局的 1.111B Class。付款前对比具体域名的首年价、续费价和 ICANN 等费用；普通 `.xyz` 的首年促销与数字域名的长期价格可能不同。[Spaceship 价格](https://www.spaceship.com/domains/gtld/xyz/) · [注册局数字域名说明](https://gen.xyz/1111b)
+
+使用 Cloudflare 托管时，注册账户、添加根域名并核对导入的现有记录（含邮件 MX/TXT）。在 Spaceship 或原注册商处将权威名称服务器改为 Cloudflare 分配的 NS，待 Zone 显示 **Active** 后，再按上表创建所需子域名。[Cloudflare 接入步骤](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/)
+
+**按用途准备凭据。** SingForge 自动管理 DNS 使用限定目标 Zone 的 Zone Read 和 DNS Edit Token；通过 API 创建隧道还需目标账户的 Tunnel Write 权限。Certbot 使用独立的 Zone DNS Edit Token，写入 root 专用的 INI 文件（0600）。connector token 供 cloudflared 运行一条隧道。具体命令和凭据格式见[运维指南](docs/operations.md#cloudflare)与[自动续签说明](docs/operations.md#certbot-renewal-for-public-subscriptions)。
+
+### 将示例换成自己的域名
+
+复制[混合部署示例](configs/hybrid.yaml)，将 `endpoints.direct`、`endpoints.cdn`、`endpoints.tunnel` 填为自己创建的完整主机名，并替换证书和凭据路径。已有部署可用 `singforge domain configure --domain example.org --hostname fast --mode dns-only` 更新直连主机名。
+
+直连境外 DNS 导致节点启动超时时，可在服务器执行 `sudo singforge dns set --mihomo-node-dns alidns`，然后刷新完整 Mihomo 订阅。SingForge 会根据**这次导出的节点**自动生成 `proxy-server-nameserver-policy`：例如三个节点共用 `fast.example.org`、另两个共用 `edge.example.org`，配置中就只有这两个精确域名。IP 节点跳过，重复域名合并。这样也能覆盖使用不同根域名的节点。通配整个 Zone 会让其他同后缀的节点也命中 AliDNS，因此默认使用精确匹配，无需手写 YAML 或添加泛域名 DNS 记录。应用域名继续使用各自的 DNS 策略。
+
 ## 编译、安装与连接
 
 使用 Go 1.26.11 或以上版本。

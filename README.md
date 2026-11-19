@@ -6,6 +6,26 @@ loopback-only publisher behind HTTPS.
 
 [中文说明](README.zh-CN.md) · [CLI reference](docs/cli.md) · [Operator guide](docs/operations.md) · [Protocol compatibility](docs/protocols.md) · [Architecture](docs/architecture.md) · [Validation](docs/validation.md)
 
+## Before you install
+
+Prepare a Debian 12+ or Ubuntu 22.04+ VPS with systemd, SSH and sudo/root access. Check its public IP and CPU architecture (`uname -m`). Select the prerequisites for the access modes you intend to use.
+
+| Access mode | What to prepare |
+|---|---|
+| Direct IP and private client export | A public IP and open TCP/UDP ports for the selected protocols. No domain or Cloudflare account is required. |
+| Direct hostname | Point a DNS-only A/AAAA record such as `fast.example.org` at the VPS. Manual DNS setup requires no API token. |
+| Cloudflare CDN | An active Cloudflare zone, proxied hostname, Nginx, reachable origin HTTPS port and matching origin certificate/key for Full (strict). |
+| Named Tunnel | An active zone, a proxied CNAME to `<UUID>.cfargotunnel.com` and outbound connectivity. Use a credentials JSON for a locally managed tunnel or a connector token for a dashboard-managed tunnel. |
+| Public subscriptions | A separate hostname, trusted certificate/key, Nginx and public TCP 443. Plan for a port conflict if Reality already occupies TCP 443 on the same address. |
+
+An existing domain works. For a low-cost option, search Spaceship for a 6–9 digit numeric `.xyz` in the registry’s 1.111B Class. Compare registration, renewal and applicable fees for the exact name at checkout. [Spaceship pricing](https://www.spaceship.com/domains/gtld/xyz/) · [XYZ registry](https://gen.xyz/1111b)
+
+For Cloudflare DNS hosting, add the root domain to your account, verify imported records including mail records, set the assigned nameservers at your registrar and wait for **Active** before creating endpoint records. For SingForge DNS automation, scope Zone Read and DNS Edit to the selected zone. Add account Tunnel Write only for API tunnel management. For Certbot DNS-01 use a separate zone-scoped DNS Edit token in a root-private INI file (0600). [Cloudflare zone setup](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/) · [Operator commands](docs/operations.md#cloudflare)
+
+### Using your own endpoint names
+
+Copy [hybrid.yaml](configs/hybrid.yaml) and replace the endpoint hostnames, certificate paths and tunnel credentials path. If direct international DNS fails during node setup, `sudo singforge dns set --mihomo-node-dns alidns` enables AliDNS for node bootstrap. Full Mihomo exports automatically populate `proxy-server-nameserver-policy` with the exact hostnames of their exported nodes. Names are deduplicated, IP literals are skipped and endpoints may belong to different zones. A zone wildcard would also match unrelated node names under the same suffix. Application DNS uses its own policy.
+
 ## Install from this checkout
 
 Build on a machine with Go 1.26.11 or newer. Production binaries target Linux amd64 and arm64. The build host can run
