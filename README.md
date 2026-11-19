@@ -15,7 +15,7 @@ Read AGENTS.md. Install the latest stable SingForge release on <SSH host> using 
 Use Debian 12+ or Ubuntu 22.04+, systemd, sudo/root and Linux amd64 or arm64. The VPS downloads the compiled CLI from GitHub Actions releases. It also needs outbound HTTPS to obtain the verified upstream core.
 
 ```sh
-VERSION=v0.1.3
+VERSION=v0.1.4
 BASE="https://github.com/howardshaw/singforge/releases/download/$VERSION"
 SETUP=$(mktemp -d)
 cd "$SETUP"
@@ -135,7 +135,7 @@ sudo singforge doctor
 sudo singforge
 ```
 
-On the deployment host, preview and apply check the Cloudflare zone, enabled DNS names and tunnel before applying endpoints. Workspace previews show the offline plan. Matching DNS records are reused. An IP-only change patches the address of a managed record. A DNS write returning HTTP 409 is accepted only when a fresh lookup matches the requested configuration. For a reinstall, restore the matching tunnel credentials and DNS ownership ledger from a private backup. During apply, stderr shows the current stage and repeats it every 10 seconds with elapsed time. The final JSON plan goes to stdout. Apply checks DNS conflicts, registers the connector, obtains a DNS-01 certificate and configures renewal for the enabled features. Rerun the same file after an interruption. Existing credentials and subscription grants are retained.
+On the deployment host, preview and apply check the Cloudflare zone, enabled DNS names and tunnel before applying endpoints. Workspace previews show the offline plan. Matching DNS records are reused. An IP-only change patches the address of a managed record. A DNS write returning HTTP 409 is accepted only when a fresh lookup matches the requested configuration. For a reinstall, preview reports `recover_tunnel_id` when the matching locally managed tunnel is down or inactive. Apply retrieves its credentials using the deployment API token and reconnects it with the same ID. For an active tunnel, restore its credentials from a private backup. Restore the DNS ownership ledger if existing managed addresses need to change. During apply, stderr shows the current stage and repeats it every 10 seconds with elapsed time. The final JSON plan goes to stdout. Apply checks DNS conflicts, registers the connector, obtains a DNS-01 certificate and configures renewal for the enabled features. Rerun the same file after an interruption. Existing credentials and subscription grants are retained.
 
 For a private file export use `sudo singforge subscription show --format mihomo --output client.yaml`. For a published URL use `sudo singforge subscription issue --format mihomo` and save the URL privately when displayed. Import it in Clash Verge and test individual nodes under **Main**. The dashboard supports arrows or a number followed by Enter, and 0 to select Exit on the main menu.
 

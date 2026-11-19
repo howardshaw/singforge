@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/howardshaw/singforge/internal/host"
@@ -14,19 +15,46 @@ import (
 )
 
 func certbotRun(args ...string) error {
+	_, err := certbotOutput(args...)
+	return err
+}
+
+func certbotOutput(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "certbot", args...)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("certbot %s failed: %w (see /var/log/letsencrypt/letsencrypt.log)", args[0], err)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("certbot %s failed: %w (see /var/log/letsencrypt/letsencrypt.log)", args[0], err)
 	}
-	return nil
+	return out, nil
+}
+
+// certonly prints the fullchain path on issuance; a retained certificate may
+// produce no path. In that case continue using the requested lineage.
+func issuedCertbotName(s model.State, output []byte) (string, error) {
+	name := s.ActiveCertbotName()
+	var reported string
+	for _, word := range strings.Fields(string(output)) {
+		if !filepath.IsAbs(word) || filepath.Base(word) != "fullchain.pem" {
+			continue
+		}
+		candidate := filepath.Base(filepath.Dir(word))
+		if !model.ValidCertbotName(s.PublishHost, candidate) || word != filepath.Join(host.Lineage(candidate), "fullchain.pem") || (reported != "" && reported != candidate) {
+			return "", fmt.Errorf("unexpected Certbot certificate location for %s (see /var/log/letsencrypt/letsencrypt.log)", s.PublishHost)
+		}
+		reported = candidate
+	}
+	if reported != "" {
+		name = reported
+	}
+	return name, nil
 }
 func readRenewed(s model.State) (string, string, error) {
 	if !model.Domain(s.PublishHost) {
 		return "", "", fmt.Errorf("publish an HTTPS subscription first")
 	}
-	dir := host.Lineage(s.PublishHost)
+	dir := host.Lineage(s.ActiveCertbotName())
 	cert, e := read(filepath.Join(dir, "fullchain.pem"))
 	if e != nil {
 		return "", "", e
@@ -42,11 +70,11 @@ func (op operation) autoRenew() error {
 		return fmt.Errorf("run Certbot automation on the installed Linux host")
 	}
 	s := op.state
-	name := s.PublishHost
+	name := s.ActiveCertbotName()
 	if op.path == "certificate auto-renew sync" && os.Getenv("RENEWED_LINEAGE") != "" && (!s.AutoRenew || os.Getenv("RENEWED_LINEAGE") != host.Lineage(name)) {
 		return nil
 	}
-	if !model.Domain(name) {
+	if !model.ValidCertbotName(s.PublishHost, name) {
 		return fmt.Errorf("publish an HTTPS subscription first")
 	}
 	params, e := host.RenewalParams(name)
@@ -55,12 +83,12 @@ func (op operation) autoRenew() error {
 	}
 	if op.path == "certificate auto-renew status" {
 		cert, _, err := readRenewed(s)
-		match := err == nil && host.VerifyServedCert(name, cert) == nil
+		match := err == nil && host.VerifyServedCert(s.PublishHost, cert) == nil
 		timer := exec.Command("systemctl", "is-active", "--quiet", "certbot.timer").Run() == nil
 		boot := exec.Command("systemctl", "is-enabled", "--quiet", "certbot.timer").Run() == nil
 		hook := host.RenewalHookInstalled(host.RenewalHook)
 		credOK := host.ValidateDNSCredentials(params["dns_cloudflare_credentials"]) == nil
-		return printJSON(map[string]any{"host": name, "authenticator": params["authenticator"], "timer_active": timer, "timer_enabled": boot, "deploy_hook_installed": hook, "serving_live_certificate": match, "dns_credentials_private": credOK, "configured": s.AutoRenew && hook && timer && boot && params["authenticator"] == "dns-cloudflare" && credOK})
+		return printJSON(map[string]any{"host": s.PublishHost, "cert_name": name, "authenticator": params["authenticator"], "timer_active": timer, "timer_enabled": boot, "deploy_hook_installed": hook, "serving_live_certificate": match, "dns_credentials_private": credOK, "configured": s.AutoRenew && hook && timer && boot && params["authenticator"] == "dns-cloudflare" && credOK})
 	}
 	cert, key, e := readRenewed(s)
 	if e != nil {
@@ -134,7 +162,7 @@ func (op operation) autoRenew() error {
 			return e
 		}
 	}
-	if e = host.VerifyServedCert(name, cert); e != nil {
+	if e = host.VerifyServedCert(s.PublishHost, cert); e != nil {
 		if changed {
 			return errors.Join(e, op.manager.Apply(previous))
 		}
@@ -143,5 +171,5 @@ func (op operation) autoRenew() error {
 	if op.options.quiet {
 		return nil
 	}
-	return printJSON(map[string]any{"host": name, "serving_live_certificate": true, "action": op.path})
+	return printJSON(map[string]any{"host": s.PublishHost, "cert_name": name, "serving_live_certificate": true, "action": op.path})
 }

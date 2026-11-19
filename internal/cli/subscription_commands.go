@@ -49,6 +49,7 @@ func (op operation) subscriptionRevoke() error {
 	s.Grants = nil
 	if cmd == "subscription unpublish" {
 		s.AutoRenew = false
+		s.CertbotName = ""
 		s.PublishHost = ""
 		s.PublishCert = ""
 		s.PublishKey = ""
@@ -60,6 +61,7 @@ func (op operation) subscriptionPublish() error {
 	s := op.state
 	var e error
 	s.AutoRenew = false
+	s.CertbotName = ""
 	s.PublishHost = o.get("host")
 	s.PublishCA = ""
 	if p := o.get("ca"); p != "" {

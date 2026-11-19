@@ -3,6 +3,7 @@ package cloudflare
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -241,7 +242,56 @@ func (c Client) matchRecord(z Zone, w Record) (*Record, error) {
 	return &candidates[0], nil
 }
 
-type Tunnel struct{ ID, Name, Status string }
+type Tunnel struct {
+	ID, Name, Status string
+	ConfigSource     string `json:"config_src,omitempty"`
+}
+
+type TunnelNameConflict struct{ Existing Tunnel }
+
+func (e *TunnelNameConflict) Error() string {
+	return fmt.Sprintf("tunnel %s already exists (ID %s); restore matching tunnel credentials before provisioning, or choose a unique prefix for a new host", e.Existing.Name, e.Existing.ID)
+}
+
+func (t Tunnel) Recoverable() bool {
+	return tunnelUUID.MatchString(t.ID) && t.ConfigSource == "local" && (t.Status == "down" || t.Status == "inactive")
+}
+
+var tunnelUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$`)
+
+// RecoverLocalCredentials fetches the existing secret without rotating it. Recheck
+// the resource before requesting credentials because discovery and apply are separate.
+func (c Client) RecoverLocalCredentials(account, name, id string) (string, error) {
+	if !ident.MatchString(account) || !tunnelUUID.MatchString(id) {
+		return "", fmt.Errorf("invalid account or tunnel ID")
+	}
+	path := "/accounts/" + account + "/cfd_tunnel/" + id
+	var t struct {
+		Tunnel
+		DeletedAt *string `json:"deleted_at"`
+	}
+	if _, err := c.call("GET", path, nil, &t); err != nil {
+		return "", err
+	}
+	if t.ID != id || t.Name != name || t.DeletedAt != nil || !t.Recoverable() {
+		return "", fmt.Errorf("tunnel %s changed since preflight; check its management mode and connections", id)
+	}
+	var token string
+	if _, err := c.call("GET", path+"/token", nil, &token); err != nil {
+		return "", fmt.Errorf("recover credentials for tunnel %s: %w", id, err)
+	}
+	var envelope struct {
+		Account string `json:"a"`
+		ID      string `json:"t"`
+		Secret  []byte `json:"s"`
+	}
+	raw, err := base64.StdEncoding.DecodeString(token)
+	if err != nil || json.Unmarshal(raw, &envelope) != nil || envelope.Account != account || envelope.ID != id || len(envelope.Secret) < 32 {
+		return "", fmt.Errorf("invalid recovery credentials for tunnel %s", id)
+	}
+	credentials, err := json.Marshal(map[string]any{"AccountTag": account, "TunnelID": id, "TunnelSecret": envelope.Secret})
+	return string(credentials), err
+}
 
 func (c Client) Tunnels(account string) ([]Tunnel, error) {
 	if !ident.MatchString(account) {
@@ -273,7 +323,7 @@ func (c Client) CheckTunnel(account, name, credentialID string) (string, error) 
 	foundID := false
 	for _, t := range tunnels {
 		if strings.EqualFold(t.Name, name) && (credentialID == "" || t.ID != credentialID) {
-			return t.ID, fmt.Errorf("tunnel %s already exists (ID %s); restore matching tunnel credentials before provisioning, or choose a unique prefix for a new host", name, t.ID)
+			return t.ID, &TunnelNameConflict{Existing: t}
 		}
 		if t.ID == credentialID && credentialID != "" {
 			foundID = true

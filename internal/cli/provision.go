@@ -111,6 +111,8 @@ func (op operation) provision() error {
 	}
 	progress("Checking provision prerequisites")
 	var token []byte
+	var recoverID string
+	var client cloudflare.Client
 	if c.Domain != "" {
 		if !op.manager.Live {
 			return errors.New("cloud provisioning requires live mode")
@@ -123,9 +125,12 @@ func (op operation) provision() error {
 			return err
 		}
 		progress("Checking Cloudflare zone, tunnel and DNS records")
-		client := cloudflare.New(strings.TrimSpace(string(token)))
-		if err = checkProvisionCloud(client, c, &s, op.manager.Dir); err != nil {
+		client = cloudflare.New(strings.TrimSpace(string(token)))
+		if recoverID, err = checkProvisionCloud(client, c, &s, op.manager.Dir); err != nil {
 			return err
+		}
+		if recoverID != "" {
+			plan["recover_tunnel_id"] = recoverID
 		}
 	}
 	if op.options.dry {
@@ -140,6 +145,17 @@ func (op operation) provision() error {
 				return err
 			}
 		}
+	}
+	if recoverID != "" {
+		progress("Recovering existing Cloudflare tunnel " + recoverID)
+		s.TunnelCredentials, err = client.RecoverLocalCredentials(s.AccountID, c.hostname("edge"), recoverID)
+		if err != nil {
+			return err
+		}
+		if err = store.Write(filepath.Join(op.manager.Dir, "created-tunnel.json"), []byte(s.TunnelCredentials), 0600); err != nil {
+			return err
+		}
+		s.TunnelID = recoverID
 	}
 	progress("Applying direct endpoints")
 	if err = op.manager.Apply(s); err != nil {
@@ -194,8 +210,18 @@ func (op operation) provision() error {
 	if c.Publish {
 		s.PublishHost = c.hostname("sub")
 		progress("Requesting HTTPS certificate (DNS-01 propagation may take 60s)")
-		if err = certbotRun("certonly", "--non-interactive", "--agree-tos", "--email", c.Email, "--keep-until-expiring", "--cert-name", s.PublishHost, "--dns-cloudflare", "--dns-cloudflare-credentials", c.CertFile, "--dns-cloudflare-propagation-seconds", "60", "-d", s.PublishHost); err != nil {
+		output, err := certbotOutput("certonly", "--non-interactive", "--agree-tos", "--email", c.Email, "--keep-until-expiring", "--cert-name", s.ActiveCertbotName(), "--dns-cloudflare", "--dns-cloudflare-credentials", c.CertFile, "--dns-cloudflare-propagation-seconds", "60", "-d", s.PublishHost)
+		if err != nil {
 			return err
+		}
+		name, err := issuedCertbotName(s, output)
+		if err != nil {
+			return err
+		}
+		if name == s.PublishHost {
+			s.CertbotName = ""
+		} else {
+			s.CertbotName = name
 		}
 		s.PublishCert, s.PublishKey, err = readRenewed(s)
 		if err != nil {
@@ -220,29 +246,37 @@ func (op operation) provision() error {
 }
 
 // Check every enabled hostname before applying endpoints or issuing DNS writes.
-func checkProvisionCloud(client cloudflare.Client, c provisionConfig, s *model.State, dir string) error {
+func checkProvisionCloud(client cloudflare.Client, c provisionConfig, s *model.State, dir string) (string, error) {
 	z, err := client.Zone(c.Domain)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if (s.ZoneID != "" && s.ZoneID != z.ID) || (s.AccountID != "" && s.AccountID != z.Account.ID) {
-		return errors.New("configured Cloudflare zone or account differs from this installation")
+		return "", errors.New("configured Cloudflare zone or account differs from this installation")
 	}
 	s.Zone, s.ZoneID, s.AccountID = z.Name, z.ID, z.Account.ID
 	var tunnelErr error
+	var recoverID string
 	target := *s
 	if c.Tunnel {
 		if err := loadProvisionTunnel(s, dir); err != nil {
-			return err
+			return "", err
 		}
 		target.Tunnel = c.hostname("edge")
 		target.TunnelID, tunnelErr = client.CheckTunnel(s.AccountID, target.Tunnel, s.TunnelID)
+		var conflict *cloudflare.TunnelNameConflict
+		if s.TunnelID == "" && errors.As(tunnelErr, &conflict) && conflict.Existing.Name == target.Tunnel && conflict.Existing.Recoverable() {
+			recoverID, tunnelErr = conflict.Existing.ID, nil
+		}
 	}
 	if c.Publish {
 		target.PublishHost = c.hostname("sub")
 	}
 	dnsErr := syncCloudDNS(client, target, dir, opts{dry: true, quiet: true, str: map[string]*string{"address": &c.IP}})
-	return errors.Join(tunnelErr, dnsErr)
+	if err := errors.Join(tunnelErr, dnsErr); err != nil {
+		return "", err
+	}
+	return recoverID, nil
 }
 
 func loadProvisionTunnel(s *model.State, dir string) error {

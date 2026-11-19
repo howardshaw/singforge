@@ -1,6 +1,7 @@
 package cloudflare
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -155,5 +156,50 @@ func TestTunnelCreateRaceDoesNotAdoptOtherCredentials(t *testing.T) {
 	tunnel, err := c.Create(strings.Repeat("a", 32), "edge", "secret")
 	if tunnel.ID != "" || err == nil || !strings.Contains(err.Error(), "other-id") || strings.Join(methods, ",") != "GET,POST,GET" {
 		t.Fatal(tunnel, err, methods)
+	}
+}
+
+func TestRecoverLocalCredentials(t *testing.T) {
+	account := strings.Repeat("a", 32)
+	id := "76cbd6a5-0f73-4123-8895-fd983fbdd350"
+	tunnel := Tunnel{Name: "test-edge.example.org", ID: id, ConfigSource: "local", Status: "down"}
+	secret := strings.Repeat("x", 32)
+	tokenAccount := account
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var result any
+		path := "/accounts/" + account + "/cfd_tunnel/" + id
+		if r.Method != "GET" {
+			t.Errorf("unexpected %s", r.Method)
+		}
+		switch r.URL.Path {
+		case path:
+			result = tunnel
+		case path + "/token":
+			requests++
+			raw, _ := json.Marshal(map[string]any{"a": tokenAccount, "t": id, "s": []byte(secret)})
+			result = base64.StdEncoding.EncodeToString(raw)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"success": true, "result": result})
+	}))
+	defer srv.Close()
+	client := Client{srv.URL, "test", srv.Client()}
+	raw, err := client.RecoverLocalCredentials(account, tunnel.Name, id)
+	var got struct {
+		AccountTag, TunnelID string
+		TunnelSecret         []byte
+	}
+	if err != nil || json.Unmarshal([]byte(raw), &got) != nil || got.AccountTag != account || got.TunnelID != id || string(got.TunnelSecret) != secret {
+		t.Fatal("incorrect local credentials", err)
+	}
+	tokenAccount = strings.Repeat("b", 32)
+	if raw, err := client.RecoverLocalCredentials(account, tunnel.Name, id); err == nil || raw != "" {
+		t.Fatal("accepted credentials for another account")
+	}
+	tunnel.Status = "healthy"
+	if _, err := client.RecoverLocalCredentials(account, tunnel.Name, id); err == nil || requests != 2 {
+		t.Fatal("fetched credentials after tunnel reconnected")
 	}
 }

@@ -69,6 +69,7 @@ type State struct {
 	MihomoNodeDNS                                                                            string `json:",omitempty"`
 	MihomoIPv6                                                                               string `json:",omitempty"`
 	MihomoPolicy                                                                             string `json:",omitempty"`
+	CertbotName                                                                              string `json:",omitempty"`
 	AutoRenew                                                                                bool   `json:",omitempty"`
 	ConnectorToken                                                                           string `json:",omitempty"`
 	RealitySNI, RealityTarget                                                                string
@@ -194,7 +195,32 @@ func (s State) Nodes() []Node {
 	}
 	return out
 }
+
+// Certbot can allocate a numbered lineage when an older name is occupied.
+var certbotNumber = regexp.MustCompile(`^[0-9]{4,}$`)
+
+func ValidCertbotName(host, name string) bool {
+	if !Domain(host) {
+		return false
+	}
+	if name == host {
+		return true
+	}
+	n, ok := strings.CutPrefix(name, host+"-")
+	return ok && certbotNumber.MatchString(n)
+}
+
+func (s State) ActiveCertbotName() string {
+	if s.CertbotName != "" {
+		return s.CertbotName
+	}
+	return s.PublishHost
+}
+
 func (s State) Validate() error {
+	if s.CertbotName != "" && !ValidCertbotName(s.PublishHost, s.CertbotName) {
+		return fmt.Errorf("invalid Certbot lineage for subscription hostname")
+	}
 	if s.Version != Schema || net.ParseIP(s.Listen) == nil || !Host(s.Direct) || !Domain(s.Handshake) {
 		return fmt.Errorf("invalid state version, listen address, endpoint or handshake hostname")
 	}

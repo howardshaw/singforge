@@ -166,7 +166,7 @@ func Files(s model.State, core, cloud string) (map[string][]byte, error) {
 	}
 	if s.PublishHost != "" {
 		if s.AutoRenew {
-			files["renewal-lineage"] = []byte(Lineage(s.PublishHost) + "\n")
+			files["renewal-lineage"] = []byte(Lineage(s.ActiveCertbotName()) + "\n")
 		}
 		if e := CheckTrust(s.PublishHost, s.PublishCert, s.PublishKey, s.PublishCA); e != nil {
 			return nil, fmt.Errorf("subscription TLS trust failed: %w", e)
