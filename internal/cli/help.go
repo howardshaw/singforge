@@ -11,7 +11,7 @@ func groupHelp(root *cobra.Command) {
 		{"operate", "Operate the server", "服务运行", "status doctor start stop restart reload logs"},
 		{"connect", "Configure connectivity", "协议与接入", "protocol reality endpoint edge domain cloudflare dns rules certificate firewall"},
 		{"distribute", "Distribute client configurations", "客户端分发", "subscription"},
-		{"maintain", "Install and maintain", "安装与维护", "install backup bbr cloudflared core self update uninstall"},
+		{"maintain", "Install and maintain", "安装与维护", "install provision backup bbr cloudflared core self update uninstall"},
 		{"reference", "Reference", "参考", "version completion help"},
 	}
 	for _, g := range groups {

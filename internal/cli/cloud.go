@@ -167,6 +167,9 @@ func cloudCommand(cmd string, s *model.State, m host.Manager, o opts) (bool, boo
 				}
 			}
 		}
+		if o.quiet {
+			return true, false, nil
+		}
 		return true, false, printJSON(wanted)
 	default:
 		return false, false, nil

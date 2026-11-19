@@ -35,6 +35,8 @@ type menuResult struct {
 type dashboard struct {
 	menuTools
 	commandMenu
+	panel                                           hostPanel
+	digits                                          string
 	ctx                                             context.Context
 	args                                            []string
 	binary                                          string
@@ -70,7 +72,7 @@ func (m dashboard) choices() []choice {
 	}
 	return homeChoices
 }
-func (m dashboard) Init() tea.Cmd { return nil }
+func (m dashboard) Init() tea.Cmd { return m.refreshPanel() }
 func cleanText(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\n' || !unicode.IsControl(r) {
@@ -172,6 +174,8 @@ func (m dashboard) back() dashboard {
 }
 func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
+	case hostPanel:
+		m.panel = v
 	case tea.WindowSizeMsg:
 		m.width = v.Width
 		m.height = v.Height
@@ -207,7 +211,31 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.page == "home" {
 				return m, tea.Quit
 			}
-			return m.back(), nil
+			m = m.back()
+			m.digits = ""
+			if m.page == "home" {
+				return m, m.refreshPanel()
+			}
+			return m, nil
+		}
+		if m.listPage() {
+			if len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
+				m.digits += key
+				n, _ := strconv.Atoi(m.digits)
+				items := m.choices()
+				if n > len(items) || len(m.digits) > 2 {
+					m.digits = key
+					n = int(key[0] - '0')
+				}
+				for i := range items {
+					if m.number(i) == n {
+						m.cursor = i
+						break
+					}
+				}
+				return m, nil
+			}
+			m.digits = ""
 		}
 		if m.page == "host" || m.page == "custom" {
 			switch key {
@@ -249,7 +277,12 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.page == "home" {
 				return m, tea.Quit
 			}
-			return m.back(), nil
+			m = m.back()
+			m.digits = ""
+			if m.page == "home" {
+				return m, m.refreshPanel()
+			}
+			return m, nil
 		}
 		if key == "l" || key == "L" {
 			m.zh = !m.zh
@@ -267,7 +300,12 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "pgup":
 				m.scroll = max(0, m.scroll-m.capacity())
 			case "enter":
-				return m.back(), nil
+				m = m.back()
+				m.digits = ""
+				if m.page == "home" {
+					return m, m.refreshPanel()
+				}
+				return m, nil
 			}
 			return m, nil
 		}
@@ -327,19 +365,19 @@ func appendEntry(s, text string) string {
 	}
 	return s
 }
-func (m dashboard) capacity() int { return max(1, m.height-8) }
+func (m dashboard) capacity() int { return max(1, m.height-8-len(m.panelRows())) }
 func (m dashboard) lines() []string {
-	return strings.Split(ansi.Hardwrap(m.body, max(8, min(m.width-4, 66)), false), "\n")
+	return strings.Split(ansi.Hardwrap(m.body, max(8, min(m.width-4, 100)), false), "\n")
 }
 func (m dashboard) View() tea.View {
 	if v, ok := m.toolView(); ok {
 		return v
 	}
-	w := max(10, min(m.width-4, 66))
+	w := max(10, min(m.width-4, 100))
 	var b strings.Builder
 	line := func(s string) { b.WriteString("  " + ansi.Truncate(s, w, "…") + "\n") }
 	line(m.paint("1;36", "SingForge") + "   " + m.paint("2", Version))
-	line(m.paint("2", strings.Repeat("─", min(48, w))))
+	line(m.paint("2", strings.Repeat("─", w)))
 	title := m.title
 	if m.page == "home" {
 		title = m.t("Server management", "服务器管理")
@@ -347,9 +385,12 @@ func (m dashboard) View() tea.View {
 	if m.page == "preset" {
 		title = m.t("Deployment preset", "选择安装预设")
 	}
+	for _, row := range m.panelRows() {
+		line(row)
+	}
 	line(m.paint("1", title))
 	line("")
-	hint := m.t("↑/↓ move   Enter open   L 中文   q exit", "↑/↓ 选择   Enter 打开   L English   q 退出")
+	hint := m.t("↑/↓ or number   Enter open   L 中文   q exit", "↑/↓ 或数字   Enter 打开   L English   q 退出")
 	viewPage := m.page
 	if strings.HasPrefix(viewPage, "cmd:") {
 		viewPage = "catalog"
@@ -361,6 +402,7 @@ func (m dashboard) View() tea.View {
 		first := max(0, m.cursor-limit+1)
 		for i := first; i < first+limit; i++ {
 			name := m.t(items[i].en, items[i].zh)
+			name = fmt.Sprintf("%2d.  %s", m.number(i), name)
 			if i == m.cursor {
 				line(m.paint("1;36", "❯ "+name))
 			} else {

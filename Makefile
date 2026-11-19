@@ -21,7 +21,9 @@ integration: build
 release:
 	mkdir -p dist
 	for arch in amd64 arm64; do CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o dist/singforge-linux-$$arch ./cmd/singforge || exit 1; done
-	cd dist && shasum -a 256 singforge-linux-amd64 singforge-linux-arm64 > SHA256SUMS && shasum -a 256 -c SHA256SUMS
+	cp scripts/install.sh dist/install.sh
+	cp .env.example dist/singforge.env.example
+	cd dist && shasum -a 256 singforge-linux-amd64 singforge-linux-arm64 install.sh singforge.env.example > SHA256SUMS && shasum -a 256 -c SHA256SUMS
 	cp LICENSE dist/LICENSE
 	mkdir -p dist/licenses
 	cp -f docs/licenses/* dist/licenses/

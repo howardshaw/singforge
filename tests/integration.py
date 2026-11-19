@@ -199,6 +199,17 @@ def suite(a, lab):
     cli("uninstall", "--purge", "--yes")
     cli("uninstall", "--full", "--yes")
     assert not ws.exists() and backup.is_file()
+    env_file = lab / "install.env"
+    env_file.write_text("PUBLIC_IP=127.0.0.1\nREALITY_PORT=18881\nHYSTERIA2_PORT=18882\nSS_PORT=18892\n")
+    env_file.chmod(0o600)
+    args = ("provision", "--env-file", env_file)
+    assert json.loads(cli(*args, "--dry-run"))["reality_tcp"] == 18881
+    assert not (ws / "current").exists()
+    cli(*args)
+    credentials = state()["Inbounds"]
+    cli(*args)
+    assert state()["Inbounds"] == credentials
+    cli("uninstall", "--full", "--yes")
     print("PASS hybrid, publication, backup/restore, verified core replacement and full uninstall after purge")
 
 if __name__=="__main__":

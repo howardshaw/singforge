@@ -73,6 +73,7 @@ Generated from Cobra. Append `--help` to any command for flag types and defaults
 | `singforge core rollback` | Reapply the previous core with current credentials |  |
 | `singforge core update` | Stage a digest-verified core, validate and activate | `--file`, `--sha` |
 | `singforge install` | Deploy a validated generation and start managed services | `--cdn`, `--cert`, `--config`, `--connector-token-file`, `--credentials`, `--handshake`, `--handshake-target`, `--host`, `--key`, `--listen`, `--mode`, `--port`, `--preset`, `--protocols`, `--server-family`, `--tunnel` |
+| `singforge provision` | Install from a private environment file and reconcile the selected services | `--env-file` |
 | `singforge self rollback` | Restore the preceding CLI executable |  |
 | `singforge self update` | Replace the CLI from a digest-verified executable | `--file`, `--sha` |
 | `singforge uninstall` | Remove services, purge state or fully uninstall local SingForge | `--full`, `--purge` |

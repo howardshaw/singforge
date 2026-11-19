@@ -140,5 +140,8 @@ func (op operation) autoRenew() error {
 		}
 		return e
 	}
+	if op.options.quiet {
+		return nil
+	}
 	return printJSON(map[string]any{"host": name, "serving_live_certificate": true, "action": op.path})
 }

@@ -68,9 +68,9 @@ func RemoveRenewalHook() error {
 	}
 	return nil
 }
-func ValidateDNSCredentials(path string) error {
+func ValidateCredentialFile(path string) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return fmt.Errorf("supply an absolute path to the Certbot credentials INI")
+		return fmt.Errorf("supply a clean absolute credentials path")
 	}
 	for p := path; ; p = filepath.Dir(p) {
 		info, e := os.Lstat(p)
@@ -90,6 +90,12 @@ func ValidateDNSCredentials(path string) error {
 		if p == "/" {
 			break
 		}
+	}
+	return nil
+}
+func ValidateDNSCredentials(path string) error {
+	if err := ValidateCredentialFile(path); err != nil {
+		return err
 	}
 	data, e := os.ReadFile(path)
 	if e != nil {

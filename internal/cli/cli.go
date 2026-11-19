@@ -18,6 +18,7 @@ import (
 )
 
 type opts struct {
+	quiet                           bool
 	all                             bool
 	str                             map[string]*string
 	yes, dry, qr, purge, full, json bool
@@ -260,7 +261,7 @@ func execute(cmd string, o opts, handler func(operation) error) error {
 	if e != nil && !os.IsNotExist(e) {
 		return e
 	}
-	if !exists && cmd != "install" && cmd != "backup restore" && cmd != "protocol list" {
+	if !exists && cmd != "install" && cmd != "provision" && cmd != "backup restore" && cmd != "protocol list" {
 		return fmt.Errorf("no installation in %s", m.Dir)
 	}
 	return handler(operation{cmd, o, m, s, exists})
