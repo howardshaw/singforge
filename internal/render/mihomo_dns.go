@@ -59,6 +59,10 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 	direct := via(bootstrap, "DIRECT")
 	remote := via(bootstrap, "Main")
 	ai := via(bootstrap, "AI")
+	aiCN := []string{"https://dns.alidns.com/dns-query#DIRECT", "https://doh.pub/dns-query#DIRECT"}
+	if s.DNSTransport == "tls" {
+		aiCN = []string{"tls://dns.alidns.com:853#DIRECT", "tls://dot.pub:853#DIRECT"}
+	}
 	policies := M{}
 	for _, domain := range []string{"+.localhost", "+.home.arpa", "+.local", "+.lan"} {
 		policies[domain] = "rcode://name_error"
@@ -66,25 +70,30 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 			policies[domain] = "system"
 		}
 	}
-	addAI := func(r routing.Rule) {
-		if r.Group != "AI" {
+	addPolicy := func(r routing.Rule) {
+		group := ai
+		if r.Group == "AI-CN" {
+			if s.MihomoPolicy == "split" {
+				group = aiCN
+			}
+		} else if r.Group != "AI" {
 			return
 		}
 		switch r.Kind {
 		case "DOMAIN":
-			policies[r.Value] = ai
+			policies[r.Value] = group
 		case "DOMAIN-SUFFIX":
-			policies["+."+r.Value] = ai
+			policies["+."+r.Value] = group
 		}
 	}
 	for _, r := range smartServices {
-		addAI(r)
+		addPolicy(r)
 	}
 	for _, r := range s.Rules.Rules {
-		addAI(r)
+		addPolicy(r)
 	}
 	for _, r := range s.Overrides {
-		addAI(r)
+		addPolicy(r)
 	}
 	if s.MihomoPolicy == "split" && s.Routing == "smart" {
 		cn := []string{"https://dns.alidns.com/dns-query#DIRECT", "https://doh.pub/dns-query#DIRECT"}
@@ -93,7 +102,7 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 		}
 		for _, h := range domesticHosts {
 			// Keep AI classifications protected even in the presence of a user override.
-			sensitive := slices.ContainsFunc(rules, func(r routing.Rule) bool { return r.Group == "AI" && r.Match(h) })
+			sensitive := slices.ContainsFunc(rules, func(r routing.Rule) bool { return (r.Group == "AI" || r.Group == "AI-CN") && r.Match(h) })
 			if sensitive {
 				continue
 			}

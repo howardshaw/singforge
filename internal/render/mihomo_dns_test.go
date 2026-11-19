@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -45,6 +46,14 @@ func TestMihomoResolverSeparation(t *testing.T) {
 			}
 		}
 		m := dns["nameserver-policy"].(M)
+		cnAI := m["+.moonshot.cn"].([]string)
+		if policyName == "split" {
+			if !strings.Contains(cnAI[0], "alidns") || !strings.HasSuffix(cnAI[0], "#DIRECT") {
+				t.Fatal("domestic AI DNS split")
+			}
+		} else if !strings.HasSuffix(cnAI[0], "#AI") {
+			t.Fatal("strict policy sent domestic AI to local DNS")
+		}
 		for _, h := range []string{"+.chatgpt.com", "+.oaistatic.com", "+.claude.ai"} {
 			for _, r := range m[h].([]string) {
 				if !strings.HasSuffix(r, "#AI") {
@@ -300,7 +309,7 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 		}
 		stop := sync.OnceFunc(func() { cmd.Process.Kill(); cmd.Wait() })
 		t.Cleanup(stop)
-		for i := 0; i < 80; i++ {
+		for i := 0; i < 180; i++ {
 			c, e := net.DialTimeout("tcp", mixed, 100*time.Millisecond)
 			if e == nil {
 				c.Close()
@@ -309,18 +318,18 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 				}
 				return dnsAddr, stop
 			}
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(250 * time.Millisecond)
 		}
 		stop()
 		t.Fatal(log.String())
 		return "", nil
 	}
 	addr, stop := start()
-	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "api.moonshot.cn", "unclassified-ai.example.cn", "www.12306.cn"} {
+	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "unclassified-ai.example.cn", "www.12306.cn", "api.moonshot.cn", "api.deepseek.com"} {
 		if !txtQuery("udp4", addr, q) {
 			t.Fatalf("no TXT answer for %s", q)
 		}
-		if q == "www.12306.cn" {
+		if q == "www.12306.cn" || q == "api.moonshot.cn" || q == "api.deepseek.com" {
 			if !domestic.saw(q) || foreign.saw(q) {
 				t.Fatal("incorrect domestic upstream")
 			}
@@ -341,7 +350,7 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 	if txtQuery("udp4", addr, q) || domestic.saw(q) || bootstrap.saw(q) || foreign.saw(q) {
 		t.Fatal("DNS failed open after proxy outage")
 	}
-	if !txtQuery("udp4", addr, "kyfw.12306.cn") || !domestic.saw("kyfw.12306.cn") {
+	if !txtQuery("udp4", addr, "api.deepseek.com") || !domestic.saw("api.deepseek.com") || !txtQuery("udp4", addr, "kyfw.12306.cn") || !domestic.saw("kyfw.12306.cn") {
 		t.Fatal("domestic positive control failed during proxy outage")
 	}
 }
@@ -501,28 +510,43 @@ func TestMihomoLiveFallback(t *testing.T) {
 func TestSmartGeoRulesFollowServices(t *testing.T) {
 	s, _ := model.New("192.0.2.1")
 	s.MihomoPolicy = "split"
-	s.Rules.Rules = []routing.Rule{
-		{Kind: "DOMAIN-SUFFIX", Value: "moonshot.cn", Group: "DIRECT"}, {Kind: "DOMAIN", Value: "fixture.example", Group: "DIRECT"},
-		{Kind: "IP-CIDR", Value: "114.114.0.0/15", Group: "DIRECT"}, {Kind: "IP-CIDR6", Value: "240e::/20", Group: "DIRECT"},
-	}
-	for q, want := range map[string]string{"100.127.255.255": "DIRECT", "sub.msftncsi.com": "DIRECT", "cdn.doubleclick.net": "REJECT", "api.moonshot.cn": "AI", "generativelanguage.googleapis.com": "AI", "x.generativelanguage.googleapis.com": "Main", "img.ytimg.com": "Streaming", "telegram.me": "Communication", "media.whatsapp.net": "Communication", "discord.gg": "Communication", "raw.githubusercontent.com": "Main", "fixture.example": "DIRECT", "114.114.114.114": "DIRECT", "240e::1": "DIRECT", "other.example": "Main"} {
+	s.Overrides = []routing.Rule{{Kind: "DOMAIN", Value: "fixture.example", Group: "DIRECT"}}
+	for q, want := range map[string]string{"100.127.255.255": "DIRECT", "sub.msftncsi.com": "DIRECT", "cdn.doubleclick.net": "REJECT", "api.moonshot.cn": "AI-CN", "api.deepseek.com": "AI-CN", "generativelanguage.googleapis.com": "AI", "x.generativelanguage.googleapis.com": "Main", "img.ytimg.com": "Streaming", "telegram.me": "Communication", "media.whatsapp.net": "Communication", "discord.gg": "Communication", "raw.githubusercontent.com": "Main", "other.example": "Main"} {
 		if got := Explain(*s, q); !strings.HasPrefix(got, want+" ") {
 			t.Errorf("%s: %s", q, got)
 		}
 	}
+	s.Overrides = []routing.Rule{{Kind: "DOMAIN", Value: "fixture.example", Group: "DIRECT"}}
 	pre, end := policyBeforeGeo(*s)
-	cfg := M{}
-	rules := mihomoRules(cfg, *s, pre, end)
-	want := []string{"DOMAIN-SUFFIX,cn,DIRECT", "RULE-SET,cn-domains,DIRECT", "RULE-SET,cn-ips,DIRECT,no-resolve", "MATCH,Main"}
-	if !slices.Equal(rules[len(rules)-4:], want) {
+	rules := mihomoRules(*s, pre, end)
+	want := []string{"GEOSITE,CN,DIRECT", "GEOIP,CN,DIRECT,no-resolve", "MATCH,Main"}
+	if !slices.Equal(rules[len(rules)-3:], want) || !slices.Contains(rules, "DOMAIN,fixture.example,DIRECT") {
 		t.Fatal("geo/final precedence")
 	}
-	providers := cfg["rule-providers"].(M)
-	if !slices.Equal(providers["cn-domains"].(M)["payload"].([]string), []string{"+.moonshot.cn", "fixture.example"}) {
-		t.Fatal("exact/suffix information lost")
+	if strings.Contains(strings.Join(rules, "\n"), "RULE-SET,cn-domains") || strings.Contains(strings.Join(rules, "\n"), "RULE-SET,cn-ips") || len(rules) > 100 {
+		t.Fatal("expanded geographic payload")
 	}
 	dns := mihomoDNS(*s, pre, false)
 	if _, ok := dns["nameserver-policy"].(M)["fixture.example"]; ok {
 		t.Fatal("geosite leaked into DNS policy")
+	}
+	inbound, err := s.Enable("ss")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Add("ss", "direct", s.Direct, inbound.Port); err != nil {
+		t.Fatal(err)
+	}
+	config, _, err := Export(*s, "sing-box", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var native M
+	if err = json.Unmarshal(config, &native); err != nil {
+		t.Fatal(err)
+	}
+	sets := native["route"].(map[string]any)["rule_set"].([]any)
+	if len(sets) != 2 || native["experimental"].(map[string]any)["cache_file"].(map[string]any)["enabled"] != true {
+		t.Fatal("native geographic rules are not remotely cached")
 	}
 }

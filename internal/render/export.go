@@ -62,7 +62,7 @@ func singClient(s model.State, nodes []model.Node) ([]byte, error) {
 	obs = append(obs, M{"type": "selector", "tag": "Main", "outbounds": tags})
 	rules := []M{{"port": 53, "action": "hijack-dns"}}
 	{
-		for _, g := range []string{"AI", "Streaming", "Communication"} {
+		for _, g := range []string{"AI", "AI-CN", "Streaming", "Communication"} {
 			obs = append(obs, M{"type": "selector", "tag": g, "outbounds": append([]string{"Main"}, tags...)})
 		}
 	}
@@ -87,13 +87,22 @@ func singClient(s model.State, nodes []model.Node) ([]byte, error) {
 	}
 	addr, scheme := resolver(s)
 	servers := []M{{"type": scheme, "tag": "bootstrap", "server": addr, "tls": M{"enabled": true, "server_name": names[s.Resolver]}}, {"type": scheme, "tag": "remote", "server": addr, "tls": M{"enabled": true, "server_name": names[s.Resolver]}, "detour": "Main"}}
+	if s.MihomoPolicy == "split" {
+		servers = append(servers, M{"type": "https", "tag": "domestic-ai", "server": "dns.alidns.com", "server_port": 443, "path": "/dns-query", "tls": M{"enabled": true, "server_name": "dns.alidns.com"}, "domain_resolver": "bootstrap"})
+	}
 	dns := M{"servers": servers, "final": "remote", "rules": []M{{"domain_suffix": []string{"local", "lan", "home.arpa", "localhost"}, "action": "reject"}}}
+	if s.MihomoPolicy == "split" {
+		dns["rules"] = append(dns["rules"].([]M), M{"domain_suffix": []string{"deepseek.com", "moonshot.cn", "kimi.com", "qwen.ai", "tongyi.aliyun.com", "chatglm.cn", "bigmodel.cn", "doubao.com"}, "action": "route", "server": "domestic-ai"})
+	}
 	if s.DNS == "balanced" {
 		dns["servers"] = append(servers, M{"type": "local", "tag": "local"})
 		dns["rules"] = []M{{"domain_suffix": []string{"lan", "local", "home.arpa"}, "action": "route", "server": "local"}}
 	}
 	ins := []M{{"type": "mixed", "tag": "local-proxy", "listen": "127.0.0.1", "listen_port": 7890}}
 	route := M{"default_domain_resolver": "remote", "rules": rules, "final": end}
+	if s.Routing == "smart" && s.MihomoPolicy == "split" {
+		route["rules"] = append(route["rules"].([]M), M{"domain_suffix": []string{"deepseek.com", "moonshot.cn", "kimi.com", "qwen.ai", "tongyi.aliyun.com", "chatglm.cn", "bigmodel.cn", "doubao.com"}, "action": "route", "outbound": "AI-CN"})
+	}
 	if s.Capture == "tun" {
 		ins = append(ins, M{"type": "tun", "tag": "tun-in", "address": []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"}, "auto_route": true, "strict_route": true})
 		route["auto_detect_interface"] = true
@@ -101,7 +110,17 @@ func singClient(s model.State, nodes []model.Node) ([]byte, error) {
 		dr, _ := dns["rules"].([]M)
 		dns["rules"] = append(dr, M{"inbound": "tun-in", "query_type": []string{"A", "AAAA"}, "action": "route", "server": "fake"})
 	}
-	return JSON(M{"inbounds": ins, "outbounds": obs, "dns": dns, "route": route})
+	config := M{"inbounds": ins, "outbounds": obs, "dns": dns, "route": route}
+	if s.Routing == "smart" {
+		config["http_clients"] = []M{{"tag": "geo-rules", "domain_resolver": "bootstrap"}}
+		config["route"].(M)["default_http_client"] = "geo-rules"
+		config["route"].(M)["rule_set"] = []M{
+			{"type": "remote", "tag": "cn-domains", "format": "binary", "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs", "update_interval": "24h", "http_client": "geo-rules"},
+			{"type": "remote", "tag": "cn-ips", "format": "binary", "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs", "update_interval": "24h", "http_client": "geo-rules"}}
+		route["rules"] = append(route["rules"].([]M), M{"rule_set": []string{"cn-domains"}, "action": "route", "outbound": "DIRECT"}, M{"rule_set": []string{"cn-ips"}, "action": "route", "outbound": "DIRECT"})
+		config["experimental"] = M{"cache_file": M{"enabled": true}}
+	}
+	return JSON(config)
 
 }
 func mihomo(n model.Node) M {
@@ -259,11 +278,11 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 		cfg := M{"proxies": proxies}
 		if format == "mihomo" {
 			groups := []M{{"name": "Main", "type": "select", "proxies": append([]string{"Auto"}, tags...)}, {"name": "Auto", "type": "fallback", "lazy": false, "proxies": tags, "url": "https://www.gstatic.com/generate_204", "interval": 300}}
-			for _, g := range []string{"AI", "Streaming", "Communication"} {
+			for _, g := range []string{"AI", "AI-CN", "Streaming", "Communication"} {
 				groups = append(groups, M{"name": g, "type": "select", "proxies": append([]string{"Main"}, tags...)})
 			}
 			pol, end := policyBeforeGeo(s)
-			cfg["rules"] = mihomoRules(cfg, s, pol, end)
+			cfg["rules"] = mihomoRules(s, pol, end)
 			cfg["proxy-groups"] = groups
 			cfg["mixed-port"] = 7890
 			cfg["allow-lan"] = false
@@ -271,6 +290,10 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 			s.DNSFamily = family
 			cfg["ipv6"] = ipv6
 			cfg["mode"] = "rule"
+			cfg["geodata-mode"] = true
+			cfg["geo-auto-update"] = true
+			cfg["geo-update-interval"] = 24
+			cfg["geox-url"] = M{"geoip": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat", "geosite": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"}
 			if s.Capture != "system" {
 				cfg["tun"] = M{"enable": true, "stack": "mixed", "auto-route": true, "auto-detect-interface": true, "strict-route": true, "dns-hijack": []string{"any:53", "tcp://any:53"}}
 			}

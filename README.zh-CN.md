@@ -73,4 +73,4 @@ sudo singforge certificate auto-renew test
 
 ### Mihomo 国内外 DNS 分流
 
-`sudo singforge dns set --mihomo-policy split --mihomo-ipv6 off` 会重新生成完整的 Clash Verge Rev / Mihomo 订阅。smart 模式下仅列入允许名单的普通国内主机使用 AliDNS / DNSPod。AI 域名优先走 AI 代理组的境外加密解析器，其他未分类域名的客户端 DNS 默认走 Main。若希望所有公网域名都不交给国内解析器，可选择 `--mihomo-policy strict`。更新订阅后检查 Clash Verge Rev 的实际运行配置，开启 TUN 服务权限，并将 Main 设为 Auto 以启用按优先级故障切换。[配置与测试说明](docs/privacy-routing.md)
+`sudo singforge dns set --mihomo-policy split --mihomo-ipv6 off` 会重新生成完整的 Clash Verge Rev / Mihomo 订阅。smart 模式下仅列入允许名单的普通国内主机使用 AliDNS / DNSPod。中国域名和 IP 分流由 Mihomo 内置的 GEOSITE/GEOIP 数据集匹配，并每 24 小时更新，不会展开成十万条订阅规则。AI 分为国际站 `AI` 与国内站 `AI-CN` 代理组；仅 `split` 模式会将明确列出的国内 AI 域名交给国内加密 DNS，`strict` 模式仍全部使用境外解析器，其他未分类域名的客户端 DNS 默认走 Main。若希望所有公网域名都不交给国内解析器，可选择 `--mihomo-policy strict`。更新订阅后检查 Clash Verge Rev 的实际运行配置，开启 TUN 服务权限，并将 Main 设为 Auto 以启用按优先级故障切换。[配置与测试说明](docs/privacy-routing.md)
