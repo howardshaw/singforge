@@ -2,6 +2,7 @@ package render
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -63,6 +64,50 @@ func TestPrivacyAndExports(t *testing.T) {
 	for k, w := range map[string]string{"gemini.google.com": "REJECT", "mail.google.com": "Main", "foo.openai.com": "AI", "notopenai.com": "Main"} {
 		if !strings.HasPrefix(Explain(*s, k), w) {
 			t.Fatal(k)
+		}
+	}
+}
+
+func TestMihomoUnmatchedSelector(t *testing.T) {
+	s, _ := model.New("192.0.2.1")
+	inbound, err := s.Enable("ss")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Add("ss", "direct", s.Direct, inbound.Port); err != nil {
+		t.Fatal(err)
+	}
+	for _, preset := range []string{"smart", "global", "custom", "gfw-only"} {
+		s.Routing = preset
+		data, _, err := Export(*s, "mihomo", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cfg struct {
+			Rules  []string
+			Groups []struct {
+				Name, Type string
+				Proxies    []string
+			} `yaml:"proxy-groups"`
+		}
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"Main", "DIRECT"}
+		if preset == "gfw-only" {
+			want = []string{"DIRECT", "Main"}
+		}
+		if cfg.Rules[len(cfg.Rules)-1] != "MATCH,Unmatched" {
+			t.Fatalf("%s final rule: %v", preset, cfg.Rules)
+		}
+		found := false
+		for _, group := range cfg.Groups {
+			if group.Name == "Unmatched" {
+				found = group.Type == "select" && slices.Equal(group.Proxies, want)
+			}
+		}
+		if !found {
+			t.Fatalf("%s missing selector with choices %v", preset, want)
 		}
 	}
 }

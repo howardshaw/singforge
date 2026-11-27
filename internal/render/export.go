@@ -336,7 +336,12 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 				groups = append(groups, M{"name": g, "type": "select", "proxies": serviceChoices(g, tags)})
 			}
 			pol, end := policyBeforeGeo(s)
-			cfg["rules"] = mihomoRules(s, pol, end)
+			unmatched := []string{"Main", "DIRECT"}
+			if end == "DIRECT" {
+				unmatched = []string{"DIRECT", "Main"}
+			}
+			groups = append(groups, M{"name": "Unmatched", "type": "select", "proxies": unmatched})
+			cfg["rules"] = mihomoRules(s, pol)
 			cfg["proxy-groups"] = groups
 			cfg["mixed-port"] = 7890
 			cfg["allow-lan"] = false

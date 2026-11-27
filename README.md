@@ -139,6 +139,8 @@ On the deployment host, preview and apply check the Cloudflare zone, enabled DNS
 
 For a private file export use `sudo singforge subscription show --format mihomo --output client.yaml`. For a published URL use `sudo singforge subscription issue --format mihomo` and save the URL privately when displayed. Import it in Clash Verge and test individual nodes under **Main**. The dashboard supports arrows or a number followed by Enter, and 0 to select Exit on the main menu.
 
+In full Mihomo subscriptions, select **Unmatched** to send unmatched traffic through Main or DIRECT. Smart, Global and Custom initially select Main. GFW-only initially selects DIRECT. In rule mode, explicit service and geographic rules take precedence.
+
 In Smart routing, the AI-CN group defaults to DIRECT on fresh imports. Clients with a saved selection can choose DIRECT under AI-CN. International AI stays proxied and strict DNS keeps its encrypted proxy path.
 
 ## Development and releases

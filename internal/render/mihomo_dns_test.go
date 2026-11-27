@@ -539,16 +539,32 @@ func TestSmartGeoRulesFollowServices(t *testing.T) {
 		}
 	}
 	s.Overrides = []routing.Rule{{Kind: "DOMAIN", Value: "fixture.example", Group: "DIRECT"}}
-	pre, end := policyBeforeGeo(*s)
-	rules := mihomoRules(*s, pre, end)
-	want := []string{"GEOSITE,CN,DIRECT", "GEOIP,CN,DIRECT,no-resolve", "MATCH,Main"}
-	if !slices.Equal(rules[len(rules)-3:], want) || !slices.Contains(rules, "DOMAIN,fixture.example,DIRECT") {
+	pre, _ := policyBeforeGeo(*s)
+	rules := mihomoRules(*s, pre)
+	want := []string{"GEOSITE,CN,DIRECT", "GEOIP,CN,DIRECT,no-resolve", "MATCH,Unmatched"}
+	if slices.Contains(rules[:len(rules)-3], want[0]) || slices.Contains(rules[:len(rules)-3], want[1]) || !slices.Equal(rules[len(rules)-3:], want) || !slices.Contains(rules, "DOMAIN,fixture.example,DIRECT") {
 		t.Fatal("geo/final precedence")
 	}
-	if strings.Contains(strings.Join(rules, "\n"), "RULE-SET,cn-domains") || strings.Contains(strings.Join(rules, "\n"), "RULE-SET,cn-ips") || len(rules) > 100 {
+	if strings.Contains(strings.Join(rules, "\n"), "RULE-SET,cn-domains") || strings.Contains(strings.Join(rules, "\n"), "RULE-SET,cn-ips") || len(rules) != len(pre)+3 {
 		t.Fatal("expanded geographic payload")
 	}
 	dns := mihomoDNS(*s, pre, false)
+	for host, key := range map[string]string{
+		"api2.cursor.sh": "+.cursor.sh", "marketplace.cursorapi.com": "+.cursorapi.com",
+		"gemini.gstatic.com": "+.gemini.gstatic.com", "geminiweb-pa.clients6.google.com": "geminiweb-pa.clients6.google.com",
+		"antigravity-pa.googleapis.com": "antigravity-pa.googleapis.com", "pplx.ai": "+.pplx.ai",
+		"antigravity.google": "+.antigravity.google", "daily-cloudcode-pa.googleapis.com": "daily-cloudcode-pa.googleapis.com",
+		"aiplatform.eu.rep.googleapis.com": "aiplatform.eu.rep.googleapis.com", "jnn-pa.googleapis.com": "jnn-pa.googleapis.com",
+		"api.githubcopilot.com": "+.githubcopilot.com", "copilot-proxy.githubusercontent.com": "copilot-proxy.githubusercontent.com",
+	} {
+		if got := Explain(*s, host); !strings.HasPrefix(got, "AI ") {
+			t.Errorf("%s routed to %s", host, got)
+		}
+		upstreams, ok := dns["nameserver-policy"].(M)[key].([]string)
+		if !ok || len(upstreams) == 0 || slices.ContainsFunc(upstreams, func(u string) bool { return !strings.HasSuffix(u, "#AI") }) {
+			t.Errorf("%s has unexpected DNS policy %v", host, upstreams)
+		}
+	}
 	if _, ok := dns["nameserver-policy"].(M)["fixture.example"]; ok {
 		t.Fatal("geosite leaked into DNS policy")
 	}

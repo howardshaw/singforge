@@ -67,6 +67,12 @@ func TestPreferredEdgeExport(t *testing.T) {
 		t.Fatal("candidate missing from manual or automatic selection")
 	}
 	for _, g := range p.Groups[3:] {
+		if g.Name == "Unmatched" {
+			if !slices.Equal(g.Proxies, []string{"Main", "DIRECT"}) {
+				t.Fatal("unexpected Unmatched choices")
+			}
+			continue
+		}
 		prefix := []string{"Main"}
 		if g.Name == "AI-CN" {
 			prefix = []string{"DIRECT", "Main"}

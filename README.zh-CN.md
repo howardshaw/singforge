@@ -141,6 +141,8 @@ sudo singforge
 
 Smart 路由下，国内 AI 域名匹配 `AI-CN`，首次导入默认选择 `DIRECT`（客户端本地直连）。已保存分组选择的客户端可在「代理 → AI-CN」手动切换到 DIRECT。国际 AI 保持代理，严格模式的 DNS 仍通过加密代理路径解析。
 
+在完整 Mihomo 订阅的规则模式下，可在「代理 → Unmatched」选择 `Main`（跟随默认代理）或 `DIRECT`（直连）。Smart、Global、Custom 首次使用默认选 Main，GFW-only 默认选 DIRECT。只有前面所有规则都未命中的连接才会进入该组。Smart 会先匹配 Cursor、Antigravity、Gemini 和 GitHub Copilot 等 AI 服务，再匹配中国域名与 IP 的直连规则。
+
 ## 开发与发版
 
 本地检查使用 `make check`。在 GitHub 的 **Actions → Publish tagged release → Run workflow** 中选择 main 并填写新版本号，即可由 CI 打标签和发布。也可以推送形如 `v0.1.1` 的语义版本标签即触发发布。GitHub 在 Ubuntu 上验证代码和 systemd 生命周期，构建两个 Linux 架构，并发布二进制、安装器、env 模板、SHA256SUMS 和许可证。[发布工作流](.github/workflows/release.yml) · [测试说明](docs/validation.md) · [安全说明](docs/security.md)
