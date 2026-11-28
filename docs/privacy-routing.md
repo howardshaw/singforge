@@ -17,6 +17,17 @@ Strict config has no ISP fallback. The full strict Mihomo profile disables syste
 
 To investigate leaks, use a domain you control and a fresh random label. Observe authoritative queries and capture physical-interface traffic while testing with and without the proxy. Watch UDP/TCP 53, 853, resolver HTTPS connections and both IP families. Compare browser DoH on/off, test proxy loss and check that sensitive names fail closed. `dns test --host NAME --port 1053` queries a running local client DNS listener on the machine running the command. Its answer alone cannot identify every application or upstream path.
 
+## Chrome WebRTC privacy on macOS
+
+WebRTC can expose your ISP's public IP to a website even when the page itself loads through a proxy. The optional [Chrome WebRTC privacy profile](../examples/macos/Chrome-WebRTC-Privacy.mobileconfig) sets `WebRtcIPHandling` to `disable_non_proxied_udp` for Google Chrome under the current macOS user. Calls may need a TCP relay or fail when a service requires direct UDP.
+
+1. Open the downloaded `.mobileconfig` file. In System Settings, search for **Device Management** or **Profiles**. Review the unsigned **Chrome WebRTC 隐私** profile and choose **Install**.
+2. In your usual Chrome profile, visit `chrome://policy`, click **Reload policies**, and confirm that `WebRtcIPHandling` has the value `disable_non_proxied_udp` and status **OK**.
+3. Repeat your WebRTC leak test in that browser. Check that the WebRTC candidates omit your ISP's public IP. An empty candidate list is also an acceptable privacy result.
+4. To undo the change, remove **Chrome WebRTC 隐私** in the same System Settings pane, reload Chrome policies, and check the effective value again.
+
+In an isolated Chrome test, the underlying preference suppressed direct STUN packets and the resulting server-reflexive candidate. The sample profile has passed plist syntax and payload checks. Steps 2 and 3 verify the effective policy and browser behavior after manual installation.
+
 ## Rule semantics
 
 The built-in smart profile works offline. Users can select AI, Streaming and Communication separately in the full client. Overrides precede service rules. Service rules precede broad geographic rules. The smart fallback is Main. Global defaults to Main. GFW-only requires a downloaded GFW list, sends its matches through Main and otherwise uses DIRECT. Custom uses the operator's ordered overrides and a Main fallback. For Mihomo, explicitly DIRECT traffic can resolve via the direct resolver list. Direct resolution follows nameserver-policy, including explicit AI protections.

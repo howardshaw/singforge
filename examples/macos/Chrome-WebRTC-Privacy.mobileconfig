@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadDisplayName</key>
+			<string>Google Chrome WebRTC</string>
+			<key>PayloadIdentifier</key>
+			<string>local.chrome.webrtc.privacy.settings</string>
+			<key>PayloadType</key>
+			<string>com.google.Chrome</string>
+			<key>PayloadUUID</key>
+			<string>BA3569D0-FA7A-49E1-A5B4-44E5AD668F41</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>WebRtcIPHandling</key>
+			<string>disable_non_proxied_udp</string>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>将当前用户的 Google Chrome WebRTC IP 处理策略设为 disable_non_proxied_udp。</string>
+	<key>PayloadDisplayName</key>
+	<string>Chrome WebRTC 隐私</string>
+	<key>PayloadIdentifier</key>
+	<string>local.chrome.webrtc.privacy</string>
+	<key>PayloadScope</key>
+	<string>User</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>131192D7-636F-4467-B748-A76F3E99E8E2</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>
