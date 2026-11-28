@@ -57,20 +57,17 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 	nodeDNS := via(bootstrap, "DIRECT")
 	remote := via(bootstrap, "Main")
 	ai := via(bootstrap, "AI")
-	dnsPod := "https://doh.pub/dns-query#DIRECT"
-	if s.DNSTransport == "tls" {
-		dnsPod = "tls://dot.pub:853#DIRECT"
-	}
-	ali := aliDNSResolvers(s.DNSFamily, s.DNSTransport)
-	domestic := append(via(ali, "DIRECT"), dnsPod)
+	local := regionalDNS(s.DNSFamily, s.DNSTransport)
+	domestic := via(local.upstreams, "DIRECT")
+	cn := append(via(local.upstreams, "DIRECT"), local.overseas+"#Main")
 	domesticAI := domestic
 	domesticFirst := s.MihomoPolicy == "domestic-first"
 	useDomesticDNS := s.MihomoPolicy == "split" || domesticFirst
 	if useDomesticDNS {
-		bootstrap = ali
+		bootstrap = local.bootstrap
 	}
 	if domesticFirst {
-		domesticAI = via(ali, "AI-CN")
+		domesticAI = via(local.upstreams, "AI-CN")
 	}
 	policies := M{}
 	for _, domain := range []string{"+.localhost", "+.home.arpa", "+.local", "+.lan"} {
@@ -140,7 +137,7 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 	if s.Routing == "smart" {
 		policies["geosite:"+geoAI] = ai
 		if useDomesticDNS {
-			policies["geosite:cn"] = via(ali, "DIRECT")
+			policies["geosite:cn"] = cn
 		}
 	}
 	return M{"enable": true, "listen": "127.0.0.1:1053", "ipv6": ipv6,
@@ -226,21 +223,43 @@ func orderedMihomoTags(nodes []model.Node) []string {
 	return tags
 }
 
-func aliDNSResolvers(family, transport string) []string {
-	addresses := []string{"223.5.5.5", "223.6.6.6"}
+type regionalResolvers struct {
+	bootstrap []string
+	upstreams []string
+	overseas  string
+}
+
+func regionalDNS(family, transport string) regionalResolvers {
+	ali := []string{"223.5.5.5", "223.6.6.6"}
+	cloudflare := "1.1.1.1"
 	if family == "ipv6" {
-		addresses = []string{"2400:3200::1", "2400:3200:baba::1"}
+		ali = []string{"2400:3200::1", "2400:3200:baba::1"}
+		cloudflare = "2606:4700:4700::1111"
 	}
-	var resolvers []string
-	for _, addr := range addresses {
-		resolvers = append(resolvers, encryptedURL(transport, addr))
+	var r regionalResolvers
+	for _, ip := range ali {
+		r.bootstrap = append(r.bootstrap, encryptedURL(transport, ip))
 	}
-	return resolvers
+	r.upstreams = slices.Clone(r.bootstrap)
+	// IPv4 DoH can reach DNSPod even when no resolver hostname can be resolved.
+	// Other families/transports use its published hostname after IP-only bootstrap.
+	tencent := "https://doh.pub/dns-query"
+	if transport == "tls" {
+		tencent = "tls://dot.pub:853"
+	} else if family != "ipv6" {
+		tencent = encryptedURL(transport, "1.12.12.12")
+		r.bootstrap = append(r.bootstrap, tencent)
+	}
+	r.upstreams = append(r.upstreams, tencent)
+	r.overseas = encryptedURL(transport, cloudflare)
+	r.bootstrap = append(r.bootstrap, r.overseas)
+	return r
 }
 
 // Restrict the opt-in resolver to the actual dial hosts of this export.
 func addNodeDNS(dns M, hosts []string, family, transport string) {
-	resolvers := via(aliDNSResolvers(family, transport), "DIRECT")
+	local := regionalDNS(family, transport)
+	resolvers := via(append(local.upstreams, local.overseas), "DIRECT")
 	policy := M{}
 	for _, h := range hosts {
 		if net.ParseIP(h) == nil {

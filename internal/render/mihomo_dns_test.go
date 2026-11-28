@@ -58,7 +58,7 @@ func TestMihomoResolverSeparation(t *testing.T) {
 		m := dns["nameserver-policy"].(M)
 		cnAI := m["+.moonshot.cn"].([]string)
 		if policyName == "split" {
-			want := []string{"https://223.5.5.5/dns-query#DIRECT", "https://223.6.6.6/dns-query#DIRECT", "https://doh.pub/dns-query#DIRECT"}
+			want := []string{"https://223.5.5.5/dns-query#DIRECT", "https://223.6.6.6/dns-query#DIRECT", "https://1.12.12.12/dns-query#DIRECT"}
 			if !slices.Equal(cnAI, want) || !slices.Equal(m["+.doubao.com"].([]string), want) {
 				t.Fatal("domestic AI DNS split")
 			}
@@ -77,8 +77,8 @@ func TestMihomoResolverSeparation(t *testing.T) {
 		}
 		bootstrap := dns["default-nameserver"].([]string)
 		if policyName == "split" {
-			if !slices.Equal(bootstrap, []string{"https://223.5.5.5/dns-query", "https://223.6.6.6/dns-query"}) ||
-				!slices.Equal(m["geosite:cn"].([]string), via(bootstrap, "DIRECT")) {
+			if !slices.Equal(bootstrap, []string{"https://223.5.5.5/dns-query", "https://223.6.6.6/dns-query", "https://1.12.12.12/dns-query", "https://1.1.1.1/dns-query"}) ||
+				!slices.Equal(m["geosite:cn"].([]string), append(via(bootstrap[:3], "DIRECT"), "https://1.1.1.1/dns-query#Main")) {
 				t.Fatal("incorrect split bootstrap or CN DNS")
 			}
 		} else if !slices.Contains(bootstrap, "https://1.1.1.1/dns-query") || len(bootstrap) != 3 {
@@ -288,7 +288,7 @@ func testMihomoDNSPaths(t *testing.T, mode string) {
 		if group == "" || group == "DIRECT" {
 			server = bootstrap.URL
 		}
-		if strings.Contains(u, "223.5.5.5") || strings.Contains(u, "223.6.6.6") || strings.Contains(u, "doh.pub") {
+		if strings.Contains(u, "223.5.5.5") || strings.Contains(u, "223.6.6.6") || strings.Contains(u, "1.12.12.12") || strings.Contains(u, "doh.pub") {
 			server = domestic.URL
 		}
 		if strings.Contains(u, "1.1.1.1") && (group == "AI" || group == "Main") {
@@ -718,7 +718,7 @@ func TestNodeDNSOnlyForExportedHostnames(t *testing.T) {
 			t.Fatal(c)
 		}
 		for k, v := range cfg.DNS.Policy {
-			if (k != "fast.example.org" && k != "edge.example.org") || !slices.Equal(v, []string{"https://223.5.5.5/dns-query#DIRECT", "https://223.6.6.6/dns-query#DIRECT"}) {
+			if (k != "fast.example.org" && k != "edge.example.org") || !slices.Equal(v, []string{"https://223.5.5.5/dns-query#DIRECT", "https://223.6.6.6/dns-query#DIRECT", "https://1.12.12.12/dns-query#DIRECT", "https://1.1.1.1/dns-query#DIRECT"}) {
 				t.Fatal(k, v)
 			}
 		}
@@ -813,5 +813,51 @@ func TestDomesticFirstDNSBoundaries(t *testing.T) {
 				t.Fatalf("domestic DNS authorized by %s", k)
 			}
 		}
+	}
+}
+
+func TestRegionalDNSIndependentPaths(t *testing.T) {
+	for _, tc := range []struct {
+		family, transport, tencent, overseas string
+		literal                              bool
+	}{
+		{"ipv4", "https", "https://1.12.12.12/dns-query", "https://1.1.1.1/dns-query", true},
+		{"ipv4", "tls", "tls://dot.pub:853", "tls://1.1.1.1:853", false},
+		{"ipv6", "https", "https://doh.pub/dns-query", "https://[2606:4700:4700::1111]/dns-query", false},
+		{"ipv6", "tls", "tls://dot.pub:853", "tls://[2606:4700:4700::1111]:853", false},
+	} {
+		t.Run(tc.family+"/"+tc.transport, func(t *testing.T) {
+			s, err := model.New("192.0.2.2")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.MihomoPolicy, s.DNSFamily, s.DNSTransport = "split", tc.family, tc.transport
+			pol, _ := profilePolicy(*s, true)
+			d := mihomoDNS(*s, pol, tc.family == "ipv6")
+			bootstrap := d["default-nameserver"].([]string)
+			for _, raw := range bootstrap {
+				u, err := url.Parse(raw)
+				if err != nil || net.ParseIP(u.Hostname()) == nil || u.Fragment != "" {
+					t.Fatalf("invalid bootstrap %q", raw)
+				}
+			}
+			if !slices.Contains(bootstrap, tc.overseas) || slices.Contains(bootstrap, tc.tencent) != tc.literal {
+				t.Fatal(bootstrap)
+			}
+			cn := d["nameserver-policy"].(M)["geosite:cn"].([]string)
+			if !slices.Contains(cn, tc.tencent+"#DIRECT") || !slices.Contains(cn, tc.overseas+"#Main") {
+				t.Fatal(cn)
+			}
+			addNodeDNS(d, []string{"node.example.org"}, tc.family, tc.transport)
+			nodes := d["proxy-server-nameserver-policy"].(M)["node.example.org"].([]string)
+			if !slices.Contains(nodes, tc.tencent+"#DIRECT") || !slices.Contains(nodes, tc.overseas+"#DIRECT") {
+				t.Fatal(nodes)
+			}
+			for _, u := range nodes {
+				if !strings.HasSuffix(u, "#DIRECT") {
+					t.Fatal(u)
+				}
+			}
+		})
 	}
 }

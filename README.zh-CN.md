@@ -141,7 +141,9 @@ sudo singforge
 
 Smart 路由下，国内 AI 域名匹配 `AI-CN`，首次导入默认选择 `DIRECT`（客户端本地直连）。已保存分组选择的客户端可在「代理 → AI-CN」手动切换到 DIRECT。国际 AI 保持代理，严格模式的 DNS 仍通过加密代理路径解析。
 
-在完整 Mihomo 订阅的规则模式下，可在「代理 → Unmatched」选择 `Main`（跟随默认代理）或 `DIRECT`（直连）。Smart、Global、Custom 首次使用默认选 Main，GFW-only 默认选 DIRECT。只有前面所有规则都未命中的连接才会进入该组。Smart 按顺序匹配用户覆盖、内置服务规则、GeoSite 国际和国内 AI 分类、通用平台规则及中国域名/IP。客户端每 24 小时更新地理库；分类库收录的新 AI 站点可自动进入对应分组。Smart 路由搭配 split 或 domestic-first 时，普通国内网站由同一个 CN 域名集合选择 AliDNS 和直连出口。严格模式仅用该集合分流连接。
+在完整 Mihomo 订阅的规则模式下，可在「代理 → Unmatched」选择 `Main`（跟随默认代理）或 `DIRECT`（直连）。Smart、Global、Custom 首次使用默认选 Main，GFW-only 默认选 DIRECT。只有前面所有规则都未命中的连接才会进入该组。Smart 按顺序匹配用户覆盖、内置服务规则、GeoSite 国际和国内 AI 分类、通用平台规则及中国域名/IP。客户端每 24 小时更新地理库；分类库收录的新 AI 站点可自动进入对应分组。Smart 路由搭配 split 或 domestic-first 时，普通国内网站由同一个 CN 域名集合选择国内 DNS 策略和直连出口。严格模式仅用该集合分流连接。
+
+IPv4 DoH 的 split 和 domestic-first 在两个 AliDNS 地址之外，使用腾讯 DNSPod 的加密 IP 和 Cloudflare 作为独立上游。CN 查询经代理访问 Cloudflare，节点域名与引导查询直连。多个上游可能同时收到查询。IPv6 和 DoT 使用对应地址族的 AliDNS 与 Cloudflare IP 引导，通过腾讯官方域名连接 DNSPod。
 
 [完整 Mihomo 分流示例](examples/mihomo-smart-split.yaml) 由 CLI 使用测试节点生成，可用于核对 DNS 上游、策略顺序和代理分组。
 

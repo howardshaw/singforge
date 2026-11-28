@@ -88,7 +88,7 @@ func TestPreferredEdgeExport(t *testing.T) {
 		}
 		for i, addr := range s.PreferredEdge.Addresses {
 			clone := p.Proxies[j*3+1+i]
-			if clone["server"] != addr || clone["name"] != baseID+" / "+addr || len(p.DNS.Node[addr]) != 2 || p.DNS.Policy[addr] != nil {
+			if clone["server"] != addr || clone["name"] != baseID+" / "+addr || len(p.DNS.Node[addr]) != 4 || p.DNS.Policy[addr] != nil {
 				t.Fatal("wrong dial address or DNS scope")
 			}
 			clone["server"], clone["name"] = base["server"], base["name"]
