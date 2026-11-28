@@ -310,7 +310,7 @@ func (s State) Validate() error {
 	if !slices.Contains([]string{"", "default", "alidns"}, s.MihomoNodeDNS) {
 		return fmt.Errorf("unknown Mihomo node DNS setting")
 	}
-	if !slices.Contains([]string{"", "strict", "split"}, s.MihomoPolicy) {
+	if !slices.Contains([]string{"", "strict", "split", "domestic-first"}, s.MihomoPolicy) {
 		return fmt.Errorf("unknown Mihomo DNS policy")
 	}
 	if !slices.Contains([]string{"strict", "balanced"}, s.DNS) || !slices.Contains([]string{"google", "cloudflare", "quad9"}, s.Resolver) || !slices.Contains([]string{"global", "smart", "gfw-only", "custom"}, s.Routing) {

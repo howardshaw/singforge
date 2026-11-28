@@ -40,7 +40,7 @@ func TestMihomoResolverSeparation(t *testing.T) {
 				t.Fatal(key, v)
 			}
 			for _, n := range v {
-				if strings.Contains(n, "alidns") || strings.Contains(n, "doh.pub") {
+				if strings.Contains(n, "223.5.5.5") || strings.Contains(n, "223.6.6.6") || strings.Contains(n, "doh.pub") {
 					t.Fatal(key, n)
 				}
 			}
@@ -58,7 +58,8 @@ func TestMihomoResolverSeparation(t *testing.T) {
 		m := dns["nameserver-policy"].(M)
 		cnAI := m["+.moonshot.cn"].([]string)
 		if policyName == "split" {
-			if !strings.Contains(cnAI[0], "alidns") || !strings.HasSuffix(cnAI[0], "#DIRECT") {
+			want := []string{"https://223.5.5.5/dns-query#DIRECT", "https://223.6.6.6/dns-query#DIRECT", "https://doh.pub/dns-query#DIRECT"}
+			if !slices.Equal(cnAI, want) || !slices.Equal(m["+.doubao.com"].([]string), want) || !slices.Equal(m["www.12306.cn"].([]string), want) {
 				t.Fatal("domestic AI DNS split")
 			}
 		} else if !strings.HasSuffix(cnAI[0], "#AI") {
@@ -135,7 +136,12 @@ func newDoH(t *testing.T) *dohRecorder {
 		// A TXT answer forces upstream resolution even when Fake-IP is enabled.
 		answer := append([]byte(nil), msg[:end+5]...)
 		copy(answer[2:12], []byte{0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0})
-		answer = append(answer, 0xc0, 0x0c, 0, 16, 0, 1, 0, 0, 0, 1, 0, 3, 2, 'o', 'k')
+		if binary.BigEndian.Uint16(msg[end+1:end+3]) == 1 {
+			// A loopback origin lets the mixed proxy complete a real DIRECT request.
+			answer = append(answer, 0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 1, 0, 4, 127, 0, 0, 1)
+		} else {
+			answer = append(answer, 0xc0, 0x0c, 0, 16, 0, 1, 0, 0, 0, 1, 0, 3, 2, 'o', 'k')
+		}
 		w.Header().Set("Content-Type", "application/dns-message")
 		_, _ = w.Write(answer)
 	}))
@@ -196,15 +202,21 @@ func freeAddr(t *testing.T) string {
 // Run with MIHOMO_BIN set. Only resolver destinations, the network adapter,
 // and local listener ports are replaced; domain policy and group detours are exported.
 func TestMihomoLiveDNSPaths(t *testing.T) {
+	for _, mode := range []string{"split", "domestic-first"} {
+		t.Run(mode, func(t *testing.T) { testMihomoDNSPaths(t, mode) })
+	}
+}
+
+func testMihomoDNSPaths(t *testing.T, mode string) {
 	bin := os.Getenv("MIHOMO_BIN")
 	if bin == "" {
 		t.Skip("requires MIHOMO_BIN")
 	}
 	foreign, domestic, bootstrap := newDoH(t), newDoH(t), newDoH(t)
 	var offline atomic.Bool
-	var forwarded atomic.Int32
+	var forwarded, domesticForwarded atomic.Int32
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "CONNECT" || offline.Load() || r.Host != foreign.Listener.Addr().String() {
+		if r.Method != "CONNECT" || offline.Load() || (r.Host != foreign.Listener.Addr().String() && r.Host != domestic.Listener.Addr().String()) {
 			w.WriteHeader(503)
 			return
 		}
@@ -219,7 +231,11 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 			return
 		}
 		defer client.Close()
-		forwarded.Add(1)
+		if r.Host == domestic.Listener.Addr().String() {
+			domesticForwarded.Add(1)
+		} else {
+			forwarded.Add(1)
+		}
 		fmt.Fprint(rw, "HTTP/1.1 200 OK\r\n\r\n")
 		rw.Flush()
 		go func() { _, _ = io.Copy(up, rw); up.Close() }()
@@ -227,7 +243,11 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 	}))
 	defer proxy.Close()
 	s, _ := model.New("127.0.0.1")
-	s.MihomoPolicy = "split"
+	s.MihomoPolicy = mode
+	s.Overrides = []routing.Rule{
+		{Kind: "DOMAIN", Value: "priority.example", Group: "AI"},
+		{Kind: "DOMAIN", Value: "priority.example", Group: "AI-CN"},
+	}
 	testTun := os.Getenv("MIHOMO_TEST_TUN") == "1"
 	s.Capture = "system"
 	if testTun {
@@ -255,7 +275,7 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 		if group == "" || group == "DIRECT" {
 			server = bootstrap.URL
 		}
-		if strings.Contains(u, "alidns") || strings.Contains(u, "doh.pub") {
+		if strings.Contains(u, "223.5.5.5") || strings.Contains(u, "223.6.6.6") || strings.Contains(u, "doh.pub") {
 			server = domestic.URL
 		}
 		if strings.Contains(u, "1.1.1.1") && (group == "AI" || group == "Main") {
@@ -289,6 +309,9 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 	cfg["proxies"] = []M{{"name": "direct-ss", "type": "http", "server": "127.0.0.1", "port": p}}
 	for _, entry := range cfg["proxy-groups"].([]any) {
 		g := entry.(M)
+		if g["name"] == "Unmatched" {
+			g["proxies"] = []string{"DIRECT", "Main"}
+		}
 		if g["name"] == "Auto" {
 			g["url"] = "http://127.0.0.1:1/test"
 		}
@@ -334,8 +357,28 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 		t.Fatal(log.String())
 		return "", nil
 	}
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "direct-origin") }))
+	defer origin.Close()
+	probeDirect := func(host string) bool {
+		t.Helper()
+		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", cfg["mixed-port"]))
+		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+		defer transport.CloseIdleConnections()
+		client := http.Client{Transport: transport, Timeout: 8 * time.Second}
+		resp, err := client.Get(fmt.Sprintf("http://%s:%d/", host, origin.Listener.Addr().(*net.TCPAddr).Port))
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return string(body) == "direct-origin"
+	}
 	addr, stop := start()
-	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "unclassified-ai.example.cn", "www.12306.cn", "api.moonshot.cn", "api.deepseek.com"} {
+	directName := "unknown-live.example"
+	if !probeDirect(directName) || !foreign.saw(directName) || domestic.saw(directName) || bootstrap.saw(directName) {
+		t.Fatal("Unmatched DIRECT did not resolve the origin exclusively through proxied DNS")
+	}
+	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "unclassified-ai.example.cn", "priority.example", "api.groq.com", "yuanbao.tencent.com", "www.12306.cn", "api.moonshot.cn", "api.deepseek.com"} {
 		if !txtQuery("udp4", addr, q) {
 			t.Fatalf("no TXT answer for %s", q)
 		}
@@ -354,11 +397,38 @@ func TestMihomoLiveDNSPaths(t *testing.T) {
 		t.Fatal("foreign DoH did not traverse proxy")
 	}
 	stop()
+	if mode == "domestic-first" {
+		if domesticForwarded.Load() != 0 {
+			t.Fatal("domestic DNS unexpectedly traversed the proxy with AI-CN set to DIRECT")
+		}
+		for _, entry := range cfg["proxy-groups"].([]any) {
+			group := entry.(M)
+			if group["name"] == "AI-CN" {
+				group["proxies"] = []string{"Main", "DIRECT"}
+			}
+		}
+		addr, stop = start()
+		if !txtQuery("udp4", addr, "switch.doubao.com") || !domestic.saw("switch.doubao.com") || domesticForwarded.Load() == 0 {
+			t.Fatal("allowlisted domestic AI DNS did not follow AI-CN to Main")
+		}
+		stop()
+		for _, entry := range cfg["proxy-groups"].([]any) {
+			group := entry.(M)
+			if group["name"] == "AI-CN" || group["name"] == "Unmatched" {
+				group["proxies"] = []string{"DIRECT", "Main"}
+			}
+		}
+	}
 	offline.Store(true)
 	addr, _ = start()
-	q := "outage.openai.com"
-	if txtQuery("udp4", addr, q) || domestic.saw(q) || bootstrap.saw(q) || foreign.saw(q) {
-		t.Fatal("DNS failed open after proxy outage")
+	directName = "unknown-outage.example"
+	if probeDirect(directName) || domestic.saw(directName) || bootstrap.saw(directName) {
+		t.Fatal("Unmatched DIRECT leaked a lookup or reached the origin during proxy outage")
+	}
+	for _, q := range []string{"outage.openai.com", "outage.google.com", "unlisted-foreign.example.cn", "outage.example.org"} {
+		if txtQuery("udp4", addr, q) || domestic.saw(q) || bootstrap.saw(q) || foreign.saw(q) {
+			t.Fatalf("DNS failed open after proxy outage for %s", q)
+		}
 	}
 	if !txtQuery("udp4", addr, "api.deepseek.com") || !domestic.saw("api.deepseek.com") || !txtQuery("udp4", addr, "kyfw.12306.cn") || !domestic.saw("kyfw.12306.cn") {
 		t.Fatal("domestic positive control failed during proxy outage")
@@ -543,13 +613,13 @@ func TestSmartGeoRulesFollowServices(t *testing.T) {
 	s, _ := model.New("192.0.2.1")
 	s.MihomoPolicy = "split"
 	s.Overrides = []routing.Rule{{Kind: "DOMAIN", Value: "fixture.example", Group: "DIRECT"}}
-	for q, want := range map[string]string{"100.127.255.255": "DIRECT", "sub.msftncsi.com": "DIRECT", "cdn.doubleclick.net": "REJECT", "api.moonshot.cn": "AI-CN", "api.deepseek.com": "AI-CN", "generativelanguage.googleapis.com": "AI", "x.generativelanguage.googleapis.com": "Main", "img.ytimg.com": "Streaming", "telegram.me": "Communication", "media.whatsapp.net": "Communication", "discord.gg": "Communication", "raw.githubusercontent.com": "Main", "other.example": "Main"} {
+	for q, want := range map[string]string{"100.127.255.255": "DIRECT", "sub.msftncsi.com": "DIRECT", "cdn.doubleclick.net": "REJECT", "api.moonshot.cn": "AI-CN", "api.deepseek.com": "AI-CN", "generativelanguage.googleapis.com": "AI", "x.generativelanguage.googleapis.com": "Client", "img.ytimg.com": "Streaming", "telegram.me": "Communication", "media.whatsapp.net": "Communication", "discord.gg": "Communication", "raw.githubusercontent.com": "Main", "other.example": "Client"} {
 		if got := Explain(*s, q); !strings.HasPrefix(got, want+" ") {
 			t.Errorf("%s: %s", q, got)
 		}
 	}
 	s.Overrides = []routing.Rule{{Kind: "DOMAIN", Value: "fixture.example", Group: "DIRECT"}}
-	pre, _ := policyBeforeGeo(*s)
+	pre, _ := profilePolicy(*s, true)
 	rules := mihomoRules(*s, pre)
 	want := []string{"GEOSITE,CN,DIRECT", "GEOIP,CN,DIRECT,no-resolve", "MATCH,Unmatched"}
 	if slices.Contains(rules[:len(rules)-3], want[0]) || slices.Contains(rules[:len(rules)-3], want[1]) || !slices.Equal(rules[len(rules)-3:], want) || !slices.Contains(rules, "DOMAIN,fixture.example,DIRECT") {
@@ -575,8 +645,8 @@ func TestSmartGeoRulesFollowServices(t *testing.T) {
 			t.Errorf("%s has unexpected DNS policy %v", host, upstreams)
 		}
 	}
-	if _, ok := dns["nameserver-policy"].(M)["fixture.example"]; ok {
-		t.Fatal("geosite leaked into DNS policy")
+	if !slices.Equal(dns["nameserver-policy"].(M)["fixture.example"].([]string), dns["nameserver"].([]string)) {
+		t.Fatal("DIRECT override must resolve via Main by default")
 	}
 	inbound, err := s.Enable("ss")
 	if err != nil {
@@ -641,6 +711,92 @@ func TestNodeDNSOnlyForExportedHostnames(t *testing.T) {
 		for _, u := range append(cfg.DNS.Main, cfg.DNS.Bootstrap...) {
 			if strings.Contains(u, "223.") {
 				t.Fatal("resolver escaped node policy")
+			}
+		}
+	}
+}
+
+func TestSmartAIClientCategoriesAndOverrideOrder(t *testing.T) {
+	s, _ := model.New("192.0.2.1")
+	s.MihomoPolicy = "split"
+	s.Overrides = []routing.Rule{
+		{Kind: "DOMAIN", Value: "exact.example", Group: "AI"},
+		{Kind: "DOMAIN", Value: "exact.example", Group: "AI-CN"},
+		{Kind: "DOMAIN-SUFFIX", Value: "example.net", Group: "AI"},
+		{Kind: "DOMAIN", Value: "child.example.net", Group: "AI-CN"},
+		{Kind: "DOMAIN", Value: "docs.doubao.com", Group: "Main"},
+	}
+	pol, _ := profilePolicy(*s, true)
+	lines := mihomoRules(*s, pol)
+	last := -1
+	for _, rule := range []string{
+		"DOMAIN,exact.example,AI", "DOMAIN,exact.example,AI-CN", "DOMAIN-SUFFIX,cursor.com,AI",
+		"GEOSITE,category-ai-!cn,AI", "GEOSITE,category-ai-cn,AI-CN",
+		"DOMAIN-SUFFIX,google.com,Main", "GEOSITE,CN,DIRECT", "GEOIP,CN,DIRECT,no-resolve", "MATCH,Unmatched",
+	} {
+		idx := slices.Index(lines, rule)
+		if idx <= last {
+			t.Fatalf("missing or misplaced %s at %d after %d", rule, idx, last)
+		}
+		last = idx
+	}
+	dns := mihomoDNS(*s, pol, false)
+	m := dns["nameserver-policy"].(M)
+	for key, group := range map[string]string{
+		"exact.example": "#AI", "child.example.net": "#AI", "docs.doubao.com": "#Main",
+		"geosite:category-ai-!cn": "#AI",
+	} {
+		upstreams, ok := m[key].([]string)
+		if !ok || len(upstreams) == 0 || slices.ContainsFunc(upstreams, func(v string) bool { return !strings.HasSuffix(v, group) }) {
+			t.Errorf("%s DNS = %v, want %s", key, upstreams, group)
+		}
+	}
+	for _, key := range []string{"geosite:category-ai-cn", "geosite:cn", "+.cn"} {
+		if _, exists := m[key]; exists {
+			t.Fatalf("unexpected geographic DNS permission %s", key)
+		}
+	}
+	if got := Explain(*s, "www.hosuyun.cn"); !strings.Contains(got, "GeoSite/GeoIP") || !strings.Contains(got, "Unmatched") {
+		t.Fatal(got)
+	}
+}
+
+func TestDomesticFirstDNSBoundaries(t *testing.T) {
+	s, _ := model.New("192.0.2.2")
+	s.MihomoPolicy = "domestic-first"
+	s.Overrides = []routing.Rule{{Kind: "DOMAIN", Value: "foreign.example", Group: "AI-CN"}}
+	pol, _ := profilePolicy(*s, true)
+	lines := mihomoRules(*s, pol)
+	want := []string{"GEOSITE,CN,DIRECT", "GEOSITE,geolocation-!cn,Main", "GEOIP,CN,DIRECT,no-resolve", "MATCH,Unmatched"}
+	if !slices.Equal(lines[len(lines)-4:], want) {
+		t.Fatalf("wrong terminal rules: %v", lines)
+	}
+	for _, tc := range []struct{ family, transport, first string }{
+		{"ipv4", "https", "https://223.5.5.5/dns-query"},
+		{"ipv6", "tls", "tls://[2400:3200::1]:853"},
+	} {
+		s.DNSFamily, s.DNSTransport = tc.family, tc.transport
+		d := mihomoDNS(*s, pol, tc.family == "ipv6")
+		m := d["nameserver-policy"].(M)
+		if d["default-nameserver"].([]string)[0] != tc.first || m["+.doubao.com"].([]string)[0] != tc.first+"#AI-CN" ||
+			m["www.12306.cn"].([]string)[0] != tc.first+"#DIRECT" {
+			t.Fatalf("wrong %s resolver or exit", tc.family)
+		}
+		if d["respect-rules"] != false || d["direct-nameserver-follow-policy"] != true || d["fallback"] != nil ||
+			d["use-system-hosts"] != false || !slices.Equal(d["direct-nameserver"].([]string), d["nameserver"].([]string)) {
+			t.Fatal("unsafe default DNS path")
+		}
+		for _, r := range d["nameserver"].([]string) {
+			if !strings.HasSuffix(r, "#Main") {
+				t.Fatal(r)
+			}
+		}
+		if !slices.Equal(m["foreign.example"].([]string), m["+.openai.com"].([]string)) {
+			t.Fatal("business routing override disclosed an unknown domain to domestic DNS")
+		}
+		for _, k := range []string{"+.cn", "geosite:cn", "geosite:" + geoAICN, "+.byteimg.com"} {
+			if _, ok := m[k]; ok {
+				t.Fatalf("domestic DNS authorized by %s", k)
 			}
 		}
 	}

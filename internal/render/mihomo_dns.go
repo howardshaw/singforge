@@ -56,12 +56,20 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 			bootstrap = append(bootstrap, u)
 		}
 	}
-	direct := via(bootstrap, "DIRECT")
+	nodeDNS := via(bootstrap, "DIRECT")
 	remote := via(bootstrap, "Main")
 	ai := via(bootstrap, "AI")
-	aiCN := []string{"https://dns.alidns.com/dns-query#DIRECT", "https://doh.pub/dns-query#DIRECT"}
+	dnsPod := "https://doh.pub/dns-query#DIRECT"
 	if s.DNSTransport == "tls" {
-		aiCN = []string{"tls://dns.alidns.com:853#DIRECT", "tls://dot.pub:853#DIRECT"}
+		dnsPod = "tls://dot.pub:853#DIRECT"
+	}
+	ali := aliDNSResolvers(s.DNSFamily, s.DNSTransport)
+	domestic := append(via(ali, "DIRECT"), dnsPod)
+	domesticAI := domestic
+	domesticFirst := s.MihomoPolicy == "domestic-first"
+	if domesticFirst {
+		bootstrap = ali
+		domesticAI = via(ali, "AI-CN")
 	}
 	policies := M{}
 	for _, domain := range []string{"+.localhost", "+.home.arpa", "+.local", "+.lan"} {
@@ -70,36 +78,68 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 			policies[domain] = "system"
 		}
 	}
-	addPolicy := func(r routing.Rule) {
-		group := ai
-		if r.Group == "AI-CN" {
-			if s.MihomoPolicy == "split" {
-				group = aiCN
+	// DNS uses the most specific key, while traffic uses the first matching rule.
+	// Resolve each representable key against the ordered policy before exporting it.
+	ordered := rules
+	if s.Routing != "smart" {
+		// Other presets also protect known AI queries even without service routing.
+		ordered = append(slices.Clone(rules), smartServices...)
+		for _, r := range s.Rules.Rules {
+			if r.Group == "AI" || r.Group == "AI-CN" {
+				ordered = append(ordered, r)
 			}
-		} else if r.Group != "AI" {
-			return
-		}
-		switch r.Kind {
-		case "DOMAIN":
-			policies[r.Value] = group
-		case "DOMAIN-SUFFIX":
-			policies["+."+r.Value] = group
 		}
 	}
-	for _, r := range smartServices {
-		addPolicy(r)
-	}
-	for _, r := range s.Rules.Rules {
-		addPolicy(r)
-	}
-	for _, r := range s.Overrides {
-		addPolicy(r)
-	}
-	if s.MihomoPolicy == "split" && s.Routing == "smart" {
-		cn := []string{"https://dns.alidns.com/dns-query#DIRECT", "https://doh.pub/dns-query#DIRECT"}
-		if s.DNSTransport == "tls" {
-			cn = []string{"tls://dns.alidns.com:853#DIRECT", "tls://dot.pub:853#DIRECT"}
+	for i, candidate := range ordered {
+		if candidate.Kind != "DOMAIN" && candidate.Kind != "DOMAIN-SUFFIX" {
+			continue
 		}
+		key := candidate.Value
+		if candidate.Kind == "DOMAIN-SUFFIX" {
+			key = "+." + key
+		}
+		if _, exists := policies[key]; exists {
+			continue
+		}
+		if i >= len(s.Overrides) && candidate.Group != "AI" && candidate.Group != "AI-CN" {
+			continue
+		}
+		group := candidate.Group
+		safeForDomestic := true
+		for _, r := range ordered[:i] {
+			if candidate.Kind == "DOMAIN-SUFFIX" && r.Kind == "DOMAIN" {
+				continue // An exact rule cannot classify every descendant.
+			}
+			if r.Match(candidate.Value) {
+				group = r.Group
+				break
+			}
+			if candidate.Kind == "DOMAIN-SUFFIX" && r.Kind == "DOMAIN-KEYWORD" && r.Group != "AI-CN" {
+				// A higher-priority keyword may match only some descendants.
+				safeForDomestic = false
+			}
+		}
+		switch group {
+		case "AI":
+			policies[key] = ai
+		case "AI-CN":
+			policies[key] = ai
+			// A traffic override, downloaded category or shared CDN is not
+			// permission to disclose additional names to domestic resolvers.
+			if (s.MihomoPolicy == "split" || domesticFirst) && safeForDomestic && slices.ContainsFunc(smartServices, func(r routing.Rule) bool {
+				return r.Group == "AI-CN" && r.Match(candidate.Value)
+			}) {
+				policies[key] = domesticAI
+			}
+		default:
+			// Explicit exceptions also outrank the DNS GeoSite category.
+			policies[key] = remote
+		}
+	}
+	if s.Routing == "smart" {
+		policies["geosite:"+geoAI] = ai
+	}
+	if (s.MihomoPolicy == "split" || domesticFirst) && s.Routing == "smart" {
 		for _, h := range domesticHosts {
 			// Keep AI classifications protected even in the presence of a user override.
 			sensitive := slices.ContainsFunc(rules, func(r routing.Rule) bool { return (r.Group == "AI" || r.Group == "AI-CN") && r.Match(h) })
@@ -109,7 +149,7 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 			for _, r := range rules {
 				if r.Match(h) {
 					if r.Group == "DIRECT" {
-						policies[h] = cn
+						policies[h] = domestic
 					}
 					break
 				}
@@ -118,8 +158,8 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 	}
 	return M{"enable": true, "listen": "127.0.0.1:1053", "ipv6": ipv6,
 		"enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16", "fake-ip-filter": realIPHosts,
-		"use-hosts": true, "use-system-hosts": s.DNS == "balanced" && s.MihomoPolicy != "split", "respect-rules": true,
-		"default-nameserver": bootstrap, "proxy-server-nameserver": direct,
+		"use-hosts": true, "use-system-hosts": s.DNS == "balanced" && s.MihomoPolicy != "split" && !domesticFirst, "respect-rules": !domesticFirst,
+		"default-nameserver": bootstrap, "proxy-server-nameserver": nodeDNS,
 		"direct-nameserver": remote, "direct-nameserver-follow-policy": true,
 		"nameserver": remote, "nameserver-policy": policies,
 	}
@@ -149,16 +189,21 @@ func orderedMihomoTags(nodes []model.Node) []string {
 	return tags
 }
 
-// Restrict the opt-in resolver to the actual dial hosts of this export.
-func addNodeDNS(dns M, hosts []string, family, transport string) {
+func aliDNSResolvers(family, transport string) []string {
 	addresses := []string{"223.5.5.5", "223.6.6.6"}
 	if family == "ipv6" {
 		addresses = []string{"2400:3200::1", "2400:3200:baba::1"}
 	}
 	var resolvers []string
 	for _, addr := range addresses {
-		resolvers = append(resolvers, encryptedURL(transport, addr)+"#DIRECT")
+		resolvers = append(resolvers, encryptedURL(transport, addr))
 	}
+	return resolvers
+}
+
+// Restrict the opt-in resolver to the actual dial hosts of this export.
+func addNodeDNS(dns M, hosts []string, family, transport string) {
+	resolvers := via(aliDNSResolvers(family, transport), "DIRECT")
 	policy := M{}
 	for _, h := range hosts {
 		if net.ParseIP(h) == nil {

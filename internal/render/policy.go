@@ -75,7 +75,12 @@ func BuiltinRules() []M {
 	}
 	return out
 }
-func policyBeforeGeo(s model.State) ([]routing.Rule, string) {
+
+const geoAI = "category-ai-!cn"
+const geoAICN = "category-ai-cn"
+
+// Only the full Mihomo profile consumes the client GeoSite database.
+func profilePolicy(s model.State, mihomo bool) ([]routing.Rule, string) {
 	out := append([]routing.Rule(nil), s.Overrides...)
 	switch s.Routing {
 	case "smart":
@@ -84,6 +89,10 @@ func policyBeforeGeo(s model.State) ([]routing.Rule, string) {
 			if r.Group != "DIRECT" && r.Group != "Main" {
 				out = append(out, r)
 			}
+		}
+		if mihomo {
+			out = append(out, routing.Rule{Kind: "GEOSITE", Value: geoAI, Group: "AI"},
+				routing.Rule{Kind: "GEOSITE", Value: geoAICN, Group: "AI-CN"})
 		}
 		out = append(out, smartGeneral...)
 	case "gfw-only":
@@ -96,7 +105,7 @@ func policyBeforeGeo(s model.State) ([]routing.Rule, string) {
 	}
 	return out, "Main"
 }
-func policy(s model.State) ([]routing.Rule, string) { return policyBeforeGeo(s) }
+func policy(s model.State) ([]routing.Rule, string) { return profilePolicy(s, false) }
 
 func mihomoRules(s model.State, policy []routing.Rule) []string {
 	rules := make([]string, 0, len(policy)+4)
@@ -108,7 +117,11 @@ func mihomoRules(s model.State, policy []routing.Rule) []string {
 		rules = append(rules, line)
 	}
 	if s.Routing == "smart" {
-		rules = append(rules, "GEOSITE,CN,DIRECT", "GEOIP,CN,DIRECT,no-resolve")
+		rules = append(rules, "GEOSITE,CN,DIRECT")
+		if s.MihomoPolicy == "domestic-first" {
+			rules = append(rules, "GEOSITE,geolocation-!cn,Main")
+		}
+		rules = append(rules, "GEOIP,CN,DIRECT,no-resolve")
 	}
 	return append(rules, "MATCH,Unmatched")
 }

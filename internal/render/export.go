@@ -18,14 +18,27 @@ import (
 )
 
 func Explain(s model.State, domain string) string {
-	rules, end := policy(s)
+	rules, end := profilePolicy(s, true)
 	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
+	clientCategories := false
 	for _, r := range rules {
+		if r.Kind == "GEOSITE" {
+			clientCategories = net.ParseIP(domain) == nil
+			continue
+		}
 		if r.Match(domain) {
-			return r.Group + " (" + r.Kind + " " + r.Value + ")"
+			match := r.Group + " (" + r.Kind + " " + r.Value + ")"
+			if clientCategories {
+				return match + " unless the Mihomo client matches an earlier AI GeoSite category"
+			}
+			return match
 		}
 	}
-	return end + " (final)"
+	fallback := "Unmatched (client selection; preset default " + end + ")"
+	if s.Routing == "smart" {
+		return "Client GeoSite/GeoIP lookup required; otherwise " + fallback
+	}
+	return fallback
 }
 
 var addresses = map[string]string{"google": "8.8.8.8", "cloudflare": "1.1.1.1", "quad9": "9.9.9.9"}
@@ -335,7 +348,7 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 			for _, g := range []string{"AI", "AI-CN", "Streaming", "Communication"} {
 				groups = append(groups, M{"name": g, "type": "select", "proxies": serviceChoices(g, tags)})
 			}
-			pol, end := policyBeforeGeo(s)
+			pol, end := profilePolicy(s, true)
 			unmatched := []string{"Main", "DIRECT"}
 			if end == "DIRECT" {
 				unmatched = []string{"DIRECT", "Main"}

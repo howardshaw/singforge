@@ -61,7 +61,7 @@ func TestPrivacyAndExports(t *testing.T) {
 		}
 	}
 	s.Overrides = []routing.Rule{{Kind: "DOMAIN", Value: "gemini.google.com", Group: "REJECT"}}
-	for k, w := range map[string]string{"gemini.google.com": "REJECT", "mail.google.com": "Main", "foo.openai.com": "AI", "notopenai.com": "Main"} {
+	for k, w := range map[string]string{"gemini.google.com": "REJECT", "mail.google.com": "Main", "foo.openai.com": "AI", "notopenai.com": "Client"} {
 		if !strings.HasPrefix(Explain(*s, k), w) {
 			t.Fatal(k)
 		}

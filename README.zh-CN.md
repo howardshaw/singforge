@@ -141,7 +141,9 @@ sudo singforge
 
 Smart 路由下，国内 AI 域名匹配 `AI-CN`，首次导入默认选择 `DIRECT`（客户端本地直连）。已保存分组选择的客户端可在「代理 → AI-CN」手动切换到 DIRECT。国际 AI 保持代理，严格模式的 DNS 仍通过加密代理路径解析。
 
-在完整 Mihomo 订阅的规则模式下，可在「代理 → Unmatched」选择 `Main`（跟随默认代理）或 `DIRECT`（直连）。Smart、Global、Custom 首次使用默认选 Main，GFW-only 默认选 DIRECT。只有前面所有规则都未命中的连接才会进入该组。Smart 会先匹配 Cursor、Antigravity、Gemini 和 GitHub Copilot 等 AI 服务，再匹配中国域名与 IP 的直连规则。
+在完整 Mihomo 订阅的规则模式下，可在「代理 → Unmatched」选择 `Main`（跟随默认代理）或 `DIRECT`（直连）。Smart、Global、Custom 首次使用默认选 Main，GFW-only 默认选 DIRECT。只有前面所有规则都未命中的连接才会进入该组。Smart 按顺序匹配用户覆盖、内置服务规则、GeoSite 国际和国内 AI 分类、通用平台规则及中国域名/IP。客户端每 24 小时更新地理库；分类库收录的新 AI 站点可自动进入对应分组。国内 DNS 仅用于显式允许的域名。
+
+可选的国内网络模式通过 `sudo singforge dns set --mihomo-policy domestic-first` 启用。它用国内加密 IP 引导 DNS；内置国内 AI 的 DNS 连接跟随 `AI-CN` 选择。国外和未知站点即使业务直连，也经 `Main` 或 `AI` 查询加密 DNS，代理断开时未缓存的查询会失败。Smart 模式中，已收录的通用海外域名走 `Main`。
 
 ## 开发与发版
 
