@@ -46,24 +46,22 @@ var smartServices = func() []routing.Rule {
 	rules = append(rules, matches("DOMAIN-SUFFIX", "Streaming", "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "netflix.com", "nflxvideo.net", "nflximg.net", "disneyplus.com", "primevideo.com", "max.com", "tv.apple.com", "spotify.com", "tiktok.com")...)
 	return append(rules, matches("DOMAIN-SUFFIX", "Communication", "telegram.org", "telegram.me", "t.me", "whatsapp.com", "whatsapp.net", "discord.com", "discord.gg")...)
 }()
-var smartGeneral = func() []routing.Rule {
-	rules := matches("DOMAIN-SUFFIX", "Main", "github.com", "githubusercontent.com", "githubassets.com", "google.com", "microsoft.com")
-	// Shared Gemini assets and sign-in APIs can otherwise reach geographic DIRECT rules.
-	rules = append(rules, matches("DOMAIN", "Main", "oauth2.googleapis.com", "www.googleapis.com", "serviceusage.googleapis.com",
-		"cloudresourcemanager.googleapis.com", "people.googleapis.com", "firebaselogging-pa.googleapis.com",
-		"lh3.googleusercontent.com", "lh5.googleusercontent.com", "ssl.gstatic.com", "fonts.googleapis.com",
-		"maps.gstatic.com", "fonts.gstatic.com", "maps.googleapis.com", "www.gstatic.com", "yt3.ggpht.com",
-		"csp.withgoogle.com", "www.googletagmanager.com", "www.google-analytics.com", "optimizationguide-pa.googleapis.com",
-		"encrypted-tbn0.gstatic.com", "encrypted-tbn1.gstatic.com", "encrypted-tbn2.gstatic.com", "encrypted-tbn3.gstatic.com",
-		"streetviewpixels-pa.googleapis.com", "content-autofill.googleapis.com")...)
-	rules = append(rules, matches("DOMAIN-SUFFIX", "DIRECT", "push.apple.com", "time.apple.com", "swscan.apple.com")...)
-	return rules
-}()
+var smartGeneral = matches("DOMAIN-SUFFIX", "Main", "github.com", "githubusercontent.com", "githubassets.com", "google.com", "microsoft.com")
+var appleDirect = matches("DOMAIN-SUFFIX", "DIRECT", "push.apple.com", "time.apple.com", "swscan.apple.com")
+
+// The native sing-box profile has no Google service database.
+var nativeGoogle = matches("DOMAIN", "Main", "oauth2.googleapis.com", "www.googleapis.com", "serviceusage.googleapis.com",
+	"cloudresourcemanager.googleapis.com", "people.googleapis.com", "firebaselogging-pa.googleapis.com",
+	"lh3.googleusercontent.com", "lh5.googleusercontent.com", "ssl.gstatic.com", "fonts.googleapis.com",
+	"maps.gstatic.com", "fonts.gstatic.com", "maps.googleapis.com", "www.gstatic.com", "yt3.ggpht.com",
+	"csp.withgoogle.com", "www.googletagmanager.com", "www.google-analytics.com", "optimizationguide-pa.googleapis.com",
+	"encrypted-tbn0.gstatic.com", "encrypted-tbn1.gstatic.com", "encrypted-tbn2.gstatic.com", "encrypted-tbn3.gstatic.com",
+	"streetviewpixels-pa.googleapis.com", "content-autofill.googleapis.com")
 
 // Keep the original Suffix field for consumers of rules list.
 func BuiltinRules() []M {
 	var out []M
-	for _, set := range [][]routing.Rule{smartServices, smartGeneral} {
+	for _, set := range [][]routing.Rule{smartServices, smartGeneral, nativeGoogle, appleDirect} {
 		for _, r := range set {
 			v := M{"Kind": r.Kind, "Value": r.Value, "Group": r.Group}
 			if r.Kind == "DOMAIN-SUFFIX" {
@@ -92,8 +90,15 @@ func profilePolicy(s model.State, mihomo bool) ([]routing.Rule, string) {
 		if mihomo {
 			out = append(out, routing.Rule{Kind: "GEOSITE", Value: geoAI, Group: "AI"},
 				routing.Rule{Kind: "GEOSITE", Value: geoAICN, Group: "AI-CN"})
+			out = append(out, matches("GEOSITE", "AI", "google-gemini")...)
+			out = append(out, matches("GEOSITE", "Main", "google", "google-cn")...)
+			out = append(out, matches("DOMAIN-SUFFIX", "DIRECT", "mzstatic.com")...)
+			out = append(out, matches("GEOSITE", "DIRECT", "apple-cn", "apple-update")...)
+		} else {
+			out = append(out, nativeGoogle...)
 		}
 		out = append(out, smartGeneral...)
+		out = append(out, appleDirect...)
 	case "gfw-only":
 		for _, r := range s.Rules.Rules {
 			if r.Group == "Main" {

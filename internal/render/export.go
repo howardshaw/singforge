@@ -29,7 +29,7 @@ func Explain(s model.State, domain string) string {
 		if r.Match(domain) {
 			match := r.Group + " (" + r.Kind + " " + r.Value + ")"
 			if clientCategories {
-				return match + " unless the Mihomo client matches an earlier AI GeoSite category"
+				return match + " unless the Mihomo client matches an earlier GeoSite category"
 			}
 			return match
 		}

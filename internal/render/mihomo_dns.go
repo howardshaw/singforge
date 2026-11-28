@@ -136,6 +136,9 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 	}
 	if s.Routing == "smart" {
 		policies["geosite:"+geoAI] = ai
+		policies["geosite:google-gemini"] = ai
+		policies["geosite:google"] = remote
+		policies["geosite:google-cn"] = remote
 		if useDomesticDNS {
 			policies["geosite:cn"] = cn
 		}
@@ -183,19 +186,26 @@ func (policies mihomoDNSPolicies) MarshalYAML() (any, error) {
 	if err := node.Encode(M(policies)); err != nil {
 		return nil, err
 	}
-	var domains, keywords, categories []*yaml.Node
+	var domains, keywords []*yaml.Node
+	categories := make(map[string][]*yaml.Node)
 	for i := 0; i < len(node.Content); i += 2 {
 		pair := node.Content[i : i+2]
 		if strings.HasPrefix(pair[0].Value, "geosite:") {
-			categories = append(categories, pair...)
+			categories[pair[0].Value] = pair
 		} else if strings.HasPrefix(pair[0].Value, "rule-set:") {
 			keywords = append(keywords, pair...)
 		} else {
 			domains = append(domains, pair...)
 		}
 	}
-	// category-ai-!cn already sorts before cn within the category entries.
-	node.Content = append(append(domains, keywords...), categories...)
+	node.Content = append(domains, keywords...)
+	for _, key := range []string{"geosite:" + geoAI, "geosite:google-gemini", "geosite:google", "geosite:google-cn", "geosite:cn"} {
+		node.Content = append(node.Content, categories[key]...)
+		delete(categories, key)
+	}
+	if len(categories) != 0 {
+		return nil, fmt.Errorf("missing DNS policy priority for %v", categories)
+	}
 	return &node, nil
 }
 

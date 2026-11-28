@@ -392,7 +392,7 @@ func testMihomoDNSPaths(t *testing.T, mode string) {
 	if !probeDirect(directName) || !foreign.saw(directName) || domestic.saw(directName) || bootstrap.saw(directName) {
 		t.Fatal("Unmatched DIRECT did not resolve the origin exclusively through proxied DNS")
 	}
-	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "unclassified-ai.example.org", "protected-svc.jd.com", "priority.jd.com", "api.groq.com", "yuanbao.tencent.com", "www.jd.com", "www.12306.cn", "api.moonshot.cn", "api.deepseek.com"} {
+	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "unclassified-ai.example.org", "protected-svc.jd.com", "priority.jd.com", "fonts.googleapis.com", "www.google.cn", "api.groq.com", "yuanbao.tencent.com", "www.jd.com", "www.12306.cn", "api.moonshot.cn", "api.deepseek.com"} {
 		if !txtQuery("udp4", addr, q) {
 			t.Fatalf("no TXT answer for %s", q)
 		}
@@ -744,8 +744,9 @@ func TestSmartAIClientCategoriesAndOverrideOrder(t *testing.T) {
 	lines := mihomoRules(*s, pol)
 	last := -1
 	for _, rule := range []string{
-		"DOMAIN,exact.example,AI", "DOMAIN,exact.example,AI-CN", "DOMAIN-SUFFIX,cursor.com,AI",
-		"GEOSITE,category-ai-!cn,AI", "GEOSITE,category-ai-cn,AI-CN",
+		"DOMAIN,exact.example,AI", "DOMAIN,exact.example,AI-CN", "DOMAIN-SUFFIX,gemini.google.com,AI", "DOMAIN-SUFFIX,cursor.com,AI", "DOMAIN-SUFFIX,youtube.com,Streaming", "DOMAIN-SUFFIX,tv.apple.com,Streaming",
+		"GEOSITE,category-ai-!cn,AI", "GEOSITE,category-ai-cn,AI-CN", "GEOSITE,google-gemini,AI", "GEOSITE,google,Main", "GEOSITE,google-cn,Main",
+		"DOMAIN-SUFFIX,mzstatic.com,DIRECT", "GEOSITE,apple-cn,DIRECT", "GEOSITE,apple-update,DIRECT",
 		"DOMAIN-SUFFIX,google.com,Main", "GEOSITE,CN,DIRECT", "GEOIP,CN,DIRECT,no-resolve", "MATCH,Unmatched",
 	} {
 		idx := slices.Index(lines, rule)
@@ -758,11 +759,28 @@ func TestSmartAIClientCategoriesAndOverrideOrder(t *testing.T) {
 	m := dns["nameserver-policy"].(M)
 	for key, group := range map[string]string{
 		"exact.example": "#AI", "child.example.net": "#AI", "docs.doubao.com": "#Main",
-		"geosite:category-ai-!cn": "#AI",
+		"geosite:category-ai-!cn": "#AI", "geosite:google-gemini": "#AI", "geosite:google": "#Main", "geosite:google-cn": "#Main",
 	} {
 		upstreams, ok := m[key].([]string)
 		if !ok || len(upstreams) == 0 || slices.ContainsFunc(upstreams, func(v string) bool { return !strings.HasSuffix(v, group) }) {
 			t.Errorf("%s DNS = %v, want %s", key, upstreams, group)
+		}
+	}
+	wire, err := yaml.Marshal(mihomoDNSPolicies(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	last = -1
+	for _, key := range []string{"exact.example", "geosite:category-ai-!cn", "geosite:google-gemini", "geosite:google", "geosite:google-cn", "geosite:cn"} {
+		idx := bytes.Index(wire, []byte(key+":"))
+		if idx <= last {
+			t.Fatalf("missing or misplaced DNS policy %s", key)
+		}
+		last = idx
+	}
+	for _, rule := range nativeGoogle {
+		if slices.Contains(pol, rule) {
+			t.Fatalf("Mihomo still includes legacy exact rule %v", rule)
 		}
 	}
 	for _, key := range []string{"geosite:category-ai-cn", "www.jd.com", "+.cn"} {

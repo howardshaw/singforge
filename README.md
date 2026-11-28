@@ -141,6 +141,8 @@ For a private file export use `sudo singforge subscription show --format mihomo 
 
 In full Mihomo subscriptions, select **Unmatched** to send unmatched traffic through Main or DIRECT. Smart, Global and Custom initially select Main. GFW-only initially selects DIRECT. In Smart rule mode, user overrides and explicit service rules take precedence over the GeoSite international and domestic AI categories. General platform and CN rules follow. The client refreshes its GeoSite data every 24 hours. In Smart routing, split and domestic-first use the CN set for both ordinary domestic DNS (encrypted regional resolvers and Cloudflare via Main) and DIRECT traffic. Strict mode uses the set for routing only.
 
+In full Smart Mihomo profiles, Gemini, YouTube and Apple TV keep their service groups. The remaining Google and Google-CN traffic and DNS use Main. The Apple CN and update categories and mzstatic.com use DIRECT.
+
 The [complete Mihomo smart/split example](examples/mihomo-smart-split.yaml) uses a fixture node and shows the exported DNS settings, policy order and proxy groups.
 
 For domestic networks, `sudo singforge dns set --mihomo-policy domestic-first` enables encrypted domestic bootstrap and sends allowlisted domestic AI DNS through AI-CN. Queries outside domestic DNS policy use Main or AI even on direct connections. In Smart mode the geolocation-!cn category goes through Main.
