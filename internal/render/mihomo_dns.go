@@ -120,7 +120,7 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 		"enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16", "fake-ip-filter": realIPHosts,
 		"use-hosts": true, "use-system-hosts": s.DNS == "balanced" && s.MihomoPolicy != "split", "respect-rules": true,
 		"default-nameserver": bootstrap, "proxy-server-nameserver": direct,
-		"direct-nameserver": direct, "direct-nameserver-follow-policy": true,
+		"direct-nameserver": remote, "direct-nameserver-follow-policy": true,
 		"nameserver": remote, "nameserver-policy": policies,
 	}
 }

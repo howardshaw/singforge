@@ -45,6 +45,16 @@ func TestMihomoResolverSeparation(t *testing.T) {
 				}
 			}
 		}
+		for _, resolver := range dns["direct-nameserver"].([]string) {
+			if !strings.HasSuffix(resolver, "#Main") {
+				t.Fatalf("direct traffic must resolve through Main: %s", resolver)
+			}
+		}
+		for _, resolver := range dns["proxy-server-nameserver"].([]string) {
+			if !strings.HasSuffix(resolver, "#DIRECT") {
+				t.Fatalf("node bootstrap must remain independent of Main: %s", resolver)
+			}
+		}
 		m := dns["nameserver-policy"].(M)
 		cnAI := m["+.moonshot.cn"].([]string)
 		if policyName == "split" {
