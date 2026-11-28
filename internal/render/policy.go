@@ -57,7 +57,6 @@ var smartGeneral = func() []routing.Rule {
 		"encrypted-tbn0.gstatic.com", "encrypted-tbn1.gstatic.com", "encrypted-tbn2.gstatic.com", "encrypted-tbn3.gstatic.com",
 		"streetviewpixels-pa.googleapis.com", "content-autofill.googleapis.com")...)
 	rules = append(rules, matches("DOMAIN-SUFFIX", "DIRECT", "push.apple.com", "time.apple.com", "swscan.apple.com")...)
-	rules = append(rules, matches("DOMAIN", "DIRECT", domesticHosts...)...)
 	return rules
 }()
 

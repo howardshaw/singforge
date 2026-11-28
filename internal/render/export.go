@@ -377,6 +377,8 @@ func Export(s model.State, format, filter string) ([]byte, []string, error) {
 				}
 				addNodeDNS(dns, hosts, family, s.DNSTransport)
 			}
+			addKeywordDNS(cfg, dns, pol)
+			dns["nameserver-policy"] = mihomoDNSPolicies(dns["nameserver-policy"].(M))
 			cfg["dns"] = dns
 		}
 		b, e := yaml.Marshal(cfg)

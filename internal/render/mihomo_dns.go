@@ -1,20 +1,18 @@
 package render
 
 import (
+	"fmt"
 	"net"
 	"slices"
 	"sort"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/howardshaw/singforge/internal/model"
 	"github.com/howardshaw/singforge/internal/routing"
 )
 
-// Exact public service hosts only. A shared provider suffix can also host AI APIs.
-var domesticHosts = []string{
-	"www.12306.cn", "kyfw.12306.cn", "www.gov.cn", "www.jd.com",
-	"item.jd.com", "www.taobao.com", "www.bilibili.com", "www.qq.com", "localhost.ptlogin2.qq.com",
-}
 var realIPHosts = []string{"localhost", "+.localhost", "+.lan", "+.local", "+.home.arpa", "captive.apple.com", "+.msftconnecttest.com", "+.msftncsi.com", "localhost.ptlogin2.qq.com"}
 
 func encryptedURL(scheme, host string) string {
@@ -67,8 +65,11 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 	domestic := append(via(ali, "DIRECT"), dnsPod)
 	domesticAI := domestic
 	domesticFirst := s.MihomoPolicy == "domestic-first"
-	if domesticFirst {
+	useDomesticDNS := s.MihomoPolicy == "split" || domesticFirst
+	if useDomesticDNS {
 		bootstrap = ali
+	}
+	if domesticFirst {
 		domesticAI = via(ali, "AI-CN")
 	}
 	policies := M{}
@@ -126,7 +127,7 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 			policies[key] = ai
 			// A traffic override, downloaded category or shared CDN is not
 			// permission to disclose additional names to domestic resolvers.
-			if (s.MihomoPolicy == "split" || domesticFirst) && safeForDomestic && slices.ContainsFunc(smartServices, func(r routing.Rule) bool {
+			if useDomesticDNS && safeForDomestic && slices.ContainsFunc(smartServices, func(r routing.Rule) bool {
 				return r.Group == "AI-CN" && r.Match(candidate.Value)
 			}) {
 				policies[key] = domesticAI
@@ -138,31 +139,67 @@ func mihomoDNS(s model.State, rules []routing.Rule, ipv6 bool) M {
 	}
 	if s.Routing == "smart" {
 		policies["geosite:"+geoAI] = ai
-	}
-	if (s.MihomoPolicy == "split" || domesticFirst) && s.Routing == "smart" {
-		for _, h := range domesticHosts {
-			// Keep AI classifications protected even in the presence of a user override.
-			sensitive := slices.ContainsFunc(rules, func(r routing.Rule) bool { return (r.Group == "AI" || r.Group == "AI-CN") && r.Match(h) })
-			if sensitive {
-				continue
-			}
-			for _, r := range rules {
-				if r.Match(h) {
-					if r.Group == "DIRECT" {
-						policies[h] = domestic
-					}
-					break
-				}
-			}
+		if useDomesticDNS {
+			policies["geosite:cn"] = via(ali, "DIRECT")
 		}
 	}
 	return M{"enable": true, "listen": "127.0.0.1:1053", "ipv6": ipv6,
 		"enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16", "fake-ip-filter": realIPHosts,
-		"use-hosts": true, "use-system-hosts": s.DNS == "balanced" && s.MihomoPolicy != "split" && !domesticFirst, "respect-rules": !domesticFirst,
+		"use-hosts": true, "use-system-hosts": s.DNS == "balanced" && s.MihomoPolicy != "split" && !domesticFirst, "respect-rules": !useDomesticDNS,
 		"default-nameserver": bootstrap, "proxy-server-nameserver": nodeDNS,
 		"direct-nameserver": remote, "direct-nameserver-follow-policy": true,
 		"nameserver": remote, "nameserver-policy": policies,
 	}
+}
+
+// A keyword can match names in the CN set that are unknown at export time.
+// Inline domain matchers preserve their DNS exceptions without expanding CN.
+func addKeywordDNS(cfg, dns M, rules []routing.Rule) {
+	policies := dns["nameserver-policy"].(M)
+	if _, ok := policies["geosite:cn"]; !ok {
+		return
+	}
+	providers := M{}
+	for _, r := range rules {
+		if r.Kind != "DOMAIN-KEYWORD" {
+			continue
+		}
+		name := fmt.Sprintf("dns-keyword-%08d", len(providers))
+		providers[name] = M{"type": "inline", "behavior": "classical", "payload": []string{r.Kind + "," + r.Value}}
+		upstreams := dns["nameserver"]
+		if r.Group == "AI" || r.Group == "AI-CN" {
+			upstreams = policies["geosite:"+geoAI]
+		}
+		policies["rule-set:"+name] = upstreams
+	}
+	if len(providers) > 0 {
+		cfg["rule-providers"] = providers
+	}
+}
+
+// Mihomo checks policy entries in YAML order. A GeoSite match ends the
+// search, including for an exact exception whose name sorts after "geosite:".
+type mihomoDNSPolicies M
+
+func (policies mihomoDNSPolicies) MarshalYAML() (any, error) {
+	var node yaml.Node
+	if err := node.Encode(M(policies)); err != nil {
+		return nil, err
+	}
+	var domains, keywords, categories []*yaml.Node
+	for i := 0; i < len(node.Content); i += 2 {
+		pair := node.Content[i : i+2]
+		if strings.HasPrefix(pair[0].Value, "geosite:") {
+			categories = append(categories, pair...)
+		} else if strings.HasPrefix(pair[0].Value, "rule-set:") {
+			keywords = append(keywords, pair...)
+		} else {
+			domains = append(domains, pair...)
+		}
+	}
+	// category-ai-!cn already sorts before cn within the category entries.
+	node.Content = append(append(domains, keywords...), categories...)
+	return &node, nil
 }
 
 func orderedMihomoTags(nodes []model.Node) []string {

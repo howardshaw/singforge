@@ -139,9 +139,11 @@ On the deployment host, preview and apply check the Cloudflare zone, enabled DNS
 
 For a private file export use `sudo singforge subscription show --format mihomo --output client.yaml`. For a published URL use `sudo singforge subscription issue --format mihomo` and save the URL privately when displayed. Import it in Clash Verge and test individual nodes under **Main**. The dashboard supports arrows or a number followed by Enter, and 0 to select Exit on the main menu.
 
-In full Mihomo subscriptions, select **Unmatched** to send unmatched traffic through Main or DIRECT. Smart, Global and Custom initially select Main. GFW-only initially selects DIRECT. In Smart rule mode, user overrides and explicit service rules take precedence over the GeoSite international and domestic AI categories. General platform and CN rules follow. The client refreshes its GeoSite data every 24 hours.
+In full Mihomo subscriptions, select **Unmatched** to send unmatched traffic through Main or DIRECT. Smart, Global and Custom initially select Main. GFW-only initially selects DIRECT. In Smart rule mode, user overrides and explicit service rules take precedence over the GeoSite international and domestic AI categories. General platform and CN rules follow. The client refreshes its GeoSite data every 24 hours. In Smart routing, split and domestic-first use the CN set for both ordinary domestic DNS (encrypted AliDNS) and DIRECT traffic. Strict mode uses the set for routing only.
 
-For domestic networks, `sudo singforge dns set --mihomo-policy domestic-first` enables encrypted domestic bootstrap and sends allowlisted domestic AI DNS through AI-CN. Foreign and unknown DNS queries use Main or AI even on direct connections. In Smart mode the geolocation-!cn category goes through Main.
+The [complete Mihomo smart/split example](examples/mihomo-smart-split.yaml) uses a fixture node and shows the exported DNS settings, policy order and proxy groups.
+
+For domestic networks, `sudo singforge dns set --mihomo-policy domestic-first` enables encrypted domestic bootstrap and sends allowlisted domestic AI DNS through AI-CN. Queries outside domestic DNS policy use Main or AI even on direct connections. In Smart mode the geolocation-!cn category goes through Main.
 
 In Smart routing, the AI-CN group defaults to DIRECT on fresh imports. Clients with a saved selection can choose DIRECT under AI-CN. International AI stays proxied and strict DNS keeps its encrypted proxy path.
 

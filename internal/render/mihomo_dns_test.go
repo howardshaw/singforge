@@ -34,7 +34,7 @@ func TestMihomoResolverSeparation(t *testing.T) {
 		s.MihomoPolicy = policyName
 		rules, _ := policy(*s)
 		dns := mihomoDNS(*s, rules, false)
-		for _, key := range []string{"default-nameserver", "nameserver", "proxy-server-nameserver", "direct-nameserver"} {
+		for _, key := range []string{"nameserver", "proxy-server-nameserver", "direct-nameserver"} {
 			v := dns[key].([]string)
 			if len(v) != 3 {
 				t.Fatal(key, v)
@@ -59,7 +59,7 @@ func TestMihomoResolverSeparation(t *testing.T) {
 		cnAI := m["+.moonshot.cn"].([]string)
 		if policyName == "split" {
 			want := []string{"https://223.5.5.5/dns-query#DIRECT", "https://223.6.6.6/dns-query#DIRECT", "https://doh.pub/dns-query#DIRECT"}
-			if !slices.Equal(cnAI, want) || !slices.Equal(m["+.doubao.com"].([]string), want) || !slices.Equal(m["www.12306.cn"].([]string), want) {
+			if !slices.Equal(cnAI, want) || !slices.Equal(m["+.doubao.com"].([]string), want) {
 				t.Fatal("domestic AI DNS split")
 			}
 		} else if !strings.HasSuffix(cnAI[0], "#AI") {
@@ -72,7 +72,19 @@ func TestMihomoResolverSeparation(t *testing.T) {
 				}
 			}
 		}
-		_, has := m["www.12306.cn"]
+		if _, exists := m["www.12306.cn"]; exists {
+			t.Fatal("individual domestic service DNS rule")
+		}
+		bootstrap := dns["default-nameserver"].([]string)
+		if policyName == "split" {
+			if !slices.Equal(bootstrap, []string{"https://223.5.5.5/dns-query", "https://223.6.6.6/dns-query"}) ||
+				!slices.Equal(m["geosite:cn"].([]string), via(bootstrap, "DIRECT")) {
+				t.Fatal("incorrect split bootstrap or CN DNS")
+			}
+		} else if !slices.Contains(bootstrap, "https://1.1.1.1/dns-query") || len(bootstrap) != 3 {
+			t.Fatal("incorrect strict bootstrap")
+		}
+		_, has := m["geosite:cn"]
 		if has != (policyName == "split") {
 			t.Fatal("wrong domestic policy")
 		}
@@ -82,11 +94,6 @@ func TestMihomoResolverSeparation(t *testing.T) {
 		if dns["fallback"] != nil || dns["ipv6"] != false {
 			t.Fatal("unexpected fallback or IPv6")
 		}
-	}
-	s.Rules.Rules = []routing.Rule{{Kind: "DOMAIN-KEYWORD", Value: "12306", Group: "AI"}}
-	rules, _ := policy(*s)
-	if _, ok := mihomoDNS(*s, rules, false)["nameserver-policy"].(M)["www.12306.cn"]; ok {
-		t.Fatal("AI classification lost to domestic exception")
 	}
 	if Explain(*s, "tv.apple.com") != "Streaming (DOMAIN-SUFFIX tv.apple.com)" || Explain(*s, "captive.apple.com") != "DIRECT (DOMAIN captive.apple.com)" {
 		t.Fatal("Apple service routing")
@@ -245,9 +252,10 @@ func testMihomoDNSPaths(t *testing.T, mode string) {
 	s, _ := model.New("127.0.0.1")
 	s.MihomoPolicy = mode
 	s.Overrides = []routing.Rule{
-		{Kind: "DOMAIN", Value: "priority.example", Group: "AI"},
-		{Kind: "DOMAIN", Value: "priority.example", Group: "AI-CN"},
+		{Kind: "DOMAIN", Value: "priority.jd.com", Group: "AI"},
+		{Kind: "DOMAIN", Value: "priority.jd.com", Group: "AI-CN"},
 	}
+	s.Rules.Rules = []routing.Rule{{Kind: "DOMAIN-KEYWORD", Value: "protected-svc", Group: "AI"}}
 	testTun := os.Getenv("MIHOMO_TEST_TUN") == "1"
 	s.Capture = "system"
 	if testTun {
@@ -264,6 +272,11 @@ func testMihomoDNSPaths(t *testing.T, mode string) {
 	var cfg M
 	if e = yaml.Unmarshal(data, &cfg); e != nil {
 		t.Fatal(e)
+	}
+	explicit := bytes.Index(data, []byte("priority.jd.com:"))
+	cn := bytes.Index(data, []byte("geosite:cn:"))
+	if explicit < 0 || cn < explicit {
+		t.Fatal("exported CN resolver precedes exact DNS override")
 	}
 	dn := cfg["dns"].(M)
 	dest := func(raw string) string {
@@ -302,6 +315,7 @@ func testMihomoDNSPaths(t *testing.T, mode string) {
 	for k, v := range dn["nameserver-policy"].(M) {
 		dn["nameserver-policy"].(M)[k] = replace(v)
 	}
+	dn["nameserver-policy"] = mihomoDNSPolicies(dn["nameserver-policy"].(M))
 	// Mihomo v1.19 uses this spelling for process-local additional TLS roots.
 	cfg["tls"] = M{"custom-certifactes": []string{string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: foreign.Certificate().Raw}))}}
 	_, port, _ := net.SplitHostPort(proxy.Listener.Addr().String())
@@ -378,13 +392,13 @@ func testMihomoDNSPaths(t *testing.T, mode string) {
 	if !probeDirect(directName) || !foreign.saw(directName) || domestic.saw(directName) || bootstrap.saw(directName) {
 		t.Fatal("Unmatched DIRECT did not resolve the origin exclusively through proxied DNS")
 	}
-	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "unclassified-ai.example.cn", "priority.example", "api.groq.com", "yuanbao.tencent.com", "www.12306.cn", "api.moonshot.cn", "api.deepseek.com"} {
+	for _, q := range []string{"api.openai.com", "assets.oaistatic.com", "api.anthropic.com", "unclassified-ai.example.org", "protected-svc.jd.com", "priority.jd.com", "api.groq.com", "yuanbao.tencent.com", "www.jd.com", "www.12306.cn", "api.moonshot.cn", "api.deepseek.com"} {
 		if !txtQuery("udp4", addr, q) {
 			t.Fatalf("no TXT answer for %s", q)
 		}
-		if q == "www.12306.cn" || q == "api.moonshot.cn" || q == "api.deepseek.com" {
+		if q == "www.12306.cn" || q == "www.jd.com" || q == "yuanbao.tencent.com" || q == "api.moonshot.cn" || q == "api.deepseek.com" {
 			if !domestic.saw(q) || foreign.saw(q) {
-				t.Fatal("incorrect domestic upstream")
+				t.Fatalf("%s: domestic=%t foreign=%t bootstrap=%t", q, domestic.saw(q), foreign.saw(q), bootstrap.saw(q))
 			}
 		} else if !foreign.saw(q) || domestic.saw(q) || bootstrap.saw(q) {
 			t.Fatal("incorrect upstream for", q)
@@ -425,7 +439,7 @@ func testMihomoDNSPaths(t *testing.T, mode string) {
 	if probeDirect(directName) || domestic.saw(directName) || bootstrap.saw(directName) {
 		t.Fatal("Unmatched DIRECT leaked a lookup or reached the origin during proxy outage")
 	}
-	for _, q := range []string{"outage.openai.com", "outage.google.com", "unlisted-foreign.example.cn", "outage.example.org"} {
+	for _, q := range []string{"outage.openai.com", "outage.google.com", "unlisted-foreign.example.net", "outage.example.org"} {
 		if txtQuery("udp4", addr, q) || domestic.saw(q) || bootstrap.saw(q) || foreign.saw(q) {
 			t.Fatalf("DNS failed open after proxy outage for %s", q)
 		}
@@ -751,7 +765,7 @@ func TestSmartAIClientCategoriesAndOverrideOrder(t *testing.T) {
 			t.Errorf("%s DNS = %v, want %s", key, upstreams, group)
 		}
 	}
-	for _, key := range []string{"geosite:category-ai-cn", "geosite:cn", "+.cn"} {
+	for _, key := range []string{"geosite:category-ai-cn", "www.jd.com", "+.cn"} {
 		if _, exists := m[key]; exists {
 			t.Fatalf("unexpected geographic DNS permission %s", key)
 		}
@@ -779,7 +793,7 @@ func TestDomesticFirstDNSBoundaries(t *testing.T) {
 		d := mihomoDNS(*s, pol, tc.family == "ipv6")
 		m := d["nameserver-policy"].(M)
 		if d["default-nameserver"].([]string)[0] != tc.first || m["+.doubao.com"].([]string)[0] != tc.first+"#AI-CN" ||
-			m["www.12306.cn"].([]string)[0] != tc.first+"#DIRECT" {
+			m["geosite:cn"].([]string)[0] != tc.first+"#DIRECT" {
 			t.Fatalf("wrong %s resolver or exit", tc.family)
 		}
 		if d["respect-rules"] != false || d["direct-nameserver-follow-policy"] != true || d["fallback"] != nil ||
@@ -794,7 +808,7 @@ func TestDomesticFirstDNSBoundaries(t *testing.T) {
 		if !slices.Equal(m["foreign.example"].([]string), m["+.openai.com"].([]string)) {
 			t.Fatal("business routing override disclosed an unknown domain to domestic DNS")
 		}
-		for _, k := range []string{"+.cn", "geosite:cn", "geosite:" + geoAICN, "+.byteimg.com"} {
+		for _, k := range []string{"+.cn", "www.12306.cn", "geosite:" + geoAICN, "+.byteimg.com"} {
 			if _, ok := m[k]; ok {
 				t.Fatalf("domestic DNS authorized by %s", k)
 			}
